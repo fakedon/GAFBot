@@ -33,6 +33,7 @@ from opentele.td import TDesktop
 import random
 logger = logging.getLogger(__name__)
 load_dotenv()
+from i18n import tr, lang_from_update, get_env_i18n
 
 PASSKEY_BACK = os.getenv("PASSKEY_BACK", "🔑 <b>Passkey 功能管理</b>\n\n请选择您要执行的操作：").replace('\\n', '\n')
 user_passkey_states = {}
@@ -512,26 +513,27 @@ async def login_single_passkey(passkey_file, out_dir, api_id, api_hash):
 
 async def show_passkey_menu(update, context):
     from bot import create_back_button
+    lang = lang_from_update(update)
     keyboard = [
         [
             InlineKeyboardButton(
-                text="创建Passkey", 
+                text=tr("passkey.create", lang),
                 callback_data="passkey_create",
                 icon_custom_emoji_id="6005570495603282482",
                 style="primary"
             ),
             InlineKeyboardButton(
-                text="Passkey登录", 
+                text=tr("passkey.login", lang),
                 callback_data="passkey_login",
                 icon_custom_emoji_id="6019523512908124649",
                 style="success"
             )
         ],
-        [create_back_button()]
+        [create_back_button(lang=lang)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.callback_query.edit_message_text(
-        text=PASSKEY_BACK,
+        text=get_env_i18n("PASSKEY_BACK", lang),
         parse_mode=ParseMode.HTML,
         reply_markup=reply_markup
     )
@@ -541,13 +543,14 @@ async def handle_passkey_selection(update, context):
     user_id = str(query.from_user.id)
     data = query.data
     from bot import create_back_button
+    lang = lang_from_update(update)
     if data == "passkey_create":
-        text = "<tg-emoji emoji-id='6005570495603282482'>🔑</tg-emoji> <b>创建 Passkey</b>\n\n请上传包含 <code>.session</code> 或 <code>tdata</code> 的 ZIP 压缩包，将为您导出 <code>.Passkey</code> 凭据文件。"
+        text = f"<tg-emoji emoji-id='6005570495603282482'>🔑</tg-emoji> <b>{tr('passkey.create', lang)}</b>\n\n{tr('passkey.create_hint', lang)}"
         user_passkey_states[user_id] = {"state": "create", "waiting_zip": True}
     else:
-        text = "<tg-emoji emoji-id='6019523512908124649'>📱</tg-emoji> <b>Passkey 登录做号</b>\n\n请上传包含 <code>.Passkey</code> 凭据文件的 ZIP 压缩包，将为您自动登录并生成 <code>.session</code> 和 <code>.json</code>。"
+        text = f"<tg-emoji emoji-id='6019523512908124649'>📱</tg-emoji> <b>{tr('passkey.login', lang)}</b>\n\n{tr('passkey.login_hint', lang)}"
         user_passkey_states[user_id] = {"state": "login", "waiting_zip": True}
-    keyboard = [[create_back_button()]]
+    keyboard = [[create_back_button(lang=lang)]]
     await query.edit_message_text(
         text=text,
         parse_mode=ParseMode.HTML,
@@ -557,16 +560,17 @@ async def handle_passkey_selection(update, context):
 async def handle_passkey_document(update, context, user_id):
     document = update.message.document
     from bot import create_back_button
+    lang = lang_from_update(update)
     if not document.file_name.lower().endswith('.zip'):
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang=lang)]]
         await update.message.reply_text(
-            "<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 请上传 ZIP 格式的压缩包",
+            "<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> " + tr("err.zip_required", lang),
             parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
         return
     mode = user_passkey_states[user_id].get("state")
-    status_msg = await update.message.reply_text("<tg-emoji emoji-id='5942826671290715541'>📥</tg-emoji> 正在下载文件...", parse_mode='HTML')
+    status_msg = await update.message.reply_text("<tg-emoji emoji-id='5942826671290715541'>📥</tg-emoji> " + tr("err.processing", lang), parse_mode='HTML')
     try:
         file = await context.bot.get_file(document.file_id)
         zip_path = f"downloads/passkey_{mode}_{user_id}_{int(time.time())}.zip"
@@ -583,9 +587,9 @@ async def handle_passkey_document(update, context, user_id):
             pass
     except Exception as e:
         logger.error(f"Passkey 文件处理失败: {e}")
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang=lang)]]
         await update.message.reply_text(
-            f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 处理失败: {str(e)}",
+            f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> {tr('err.process_failed', lang)}: {str(e)}",
             parse_mode='HTML',
             reply_markup=InlineKeyboardMarkup(keyboard)
         )
@@ -596,6 +600,7 @@ async def handle_passkey_document(update, context, user_id):
             pass
 
 async def process_passkey_create(update, context, zip_path, user_id, status_msg):
+    lang = lang_from_update(update)
     api_id = int(os.getenv("TELEGRAM_APP_ID", "2040"))
     api_hash = os.getenv("TELEGRAM_APP_HASH", "b18441a1ff607e10a989891a5462e627")
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -607,7 +612,7 @@ async def process_passkey_create(update, context, zip_path, user_id, status_msg)
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 safe_extract(zip_ref, extract_dir)
         except Exception as e:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 解压失败: {str(e)}", parse_mode='HTML')
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> {tr('err.extract_failed', lang)}: {str(e)}", parse_mode='HTML')
             return
         session_files = list(extract_dir.rglob("*.session"))
         accounts = []
@@ -620,9 +625,9 @@ async def process_passkey_create(update, context, zip_path, user_id, status_msg)
         else:
             tdata_dirs = find_tdata_folders(str(extract_dir))
             if not tdata_dirs:
-                await context.bot.send_message(chat_id=update.effective_chat.id, text="<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 未找到session或tdata文件夹", parse_mode='HTML')
+                await context.bot.send_message(chat_id=update.effective_chat.id, text="<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> " + tr("err.no_session_tdata", lang), parse_mode='HTML')
                 return
-            status_msg2 = await context.bot.send_message(chat_id=update.effective_chat.id, text=f"<tg-emoji emoji-id='5942826671290715541'>🔄</tg-emoji> 检测到 {len(tdata_dirs)} 个tdata，正在转换...", parse_mode='HTML')
+            status_msg2 = await context.bot.send_message(chat_id=update.effective_chat.id, text=f"<tg-emoji emoji-id='5942826671290715541'>🔄</tg-emoji> {tr('recovery.tdata_detected', lang)} {len(tdata_dirs)} {tr('recovery.tdata_unit', lang)}", parse_mode='HTML')
             convert_temp_dir = Path(temp_dir) / "converted_sessions"
             os.makedirs(convert_temp_dir, exist_ok=True)
             for i, tdata_dir in enumerate(tdata_dirs, 1):
@@ -640,7 +645,7 @@ async def process_passkey_create(update, context, zip_path, user_id, status_msg)
                     logger.error(f"转换失败 {tdata_dir}: {err}")
                 if i % 3 == 0 or i == len(tdata_dirs):
                     try:
-                        await status_msg2.edit_text(f"<tg-emoji emoji-id='5942826671290715541'>🔄</tg-emoji> 转换进度: {i}/{len(tdata_dirs)} 成功: {len(accounts)}", parse_mode='HTML')
+                        await status_msg2.edit_text(f"<tg-emoji emoji-id='5942826671290715541'>🔄</tg-emoji> {tr('passkey.convert_progress', lang)}: {i}/{len(tdata_dirs)} {tr('shaihuo.success', lang)}: {len(accounts)}", parse_mode='HTML')
                     except:
                         pass
                 await asyncio.sleep(0.2)
@@ -649,7 +654,7 @@ async def process_passkey_create(update, context, zip_path, user_id, status_msg)
             except:
                 pass
             if not accounts:
-                await context.bot.send_message(chat_id=update.effective_chat.id, text="<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 所有tdata转换失败", parse_mode='HTML')
+                await context.bot.send_message(chat_id=update.effective_chat.id, text="<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> " + tr("err.all_tdata_failed", lang), parse_mode='HTML')
                 return
         success_count = 0
         fail_count = 0
@@ -657,7 +662,7 @@ async def process_passkey_create(update, context, zip_path, user_id, status_msg)
             if idx % 3 == 0 or idx == len(accounts):
                 try:
                     await status_msg.edit_text(
-                        f"""<tg-emoji emoji-id="5942826671290715541">⚙️</tg-emoji> <b>正在创建 Passkey</b>\n\n进度: {idx}/{len(accounts)}\n<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 成功: {success_count} | <tg-emoji emoji-id="5886496611835581345">❌</tg-emoji> 失败: {fail_count}""",
+                        f"""<tg-emoji emoji-id="5942826671290715541">⚙️</tg-emoji> <b>{tr('passkey.creating', lang)}</b>\n\n{tr('shaihuo.progress', lang)}: {idx}/{len(accounts)}\n<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('shaihuo.success', lang)}: {success_count} | <tg-emoji emoji-id="5886496611835581345">❌</tg-emoji> {tr('2fa.failed', lang)}: {fail_count}""",
                         parse_mode='HTML'
                     )
                 except:
@@ -678,13 +683,14 @@ async def process_passkey_create(update, context, zip_path, user_id, status_msg)
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=f"Passkeys_{int(time.time())}.zip",
-                    caption=f"<tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> <b>创建完成！</b>\n成功提取: {success_count} 个",
+                    caption=f"<tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> <b>{tr('passkey.create_done', lang)}</b>\n{tr('passkey.extracted', lang)}: {success_count} {tr('recovery.accounts_unit', lang)}",
                     parse_mode='HTML'
                 )
         else:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 全部创建失败", parse_mode='HTML')
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> " + tr("passkey.all_failed", lang), parse_mode='HTML')
 
 async def process_passkey_login(update, context, zip_path, user_id, status_msg):
+    lang = lang_from_update(update)
     api_id = int(os.getenv("TELEGRAM_APP_ID", "2040"))
     api_hash = os.getenv("TELEGRAM_APP_HASH", "b18441a1ff607e10a989891a5462e627")
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -696,11 +702,11 @@ async def process_passkey_login(update, context, zip_path, user_id, status_msg):
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 safe_extract(zip_ref, extract_dir)
         except Exception as e:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 解压失败: {str(e)}", parse_mode='HTML')
+            await context.bot.send_message(chat_id=update.effective_chat.id, text=f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> {tr('err.extract_failed', lang)}: {str(e)}", parse_mode='HTML')
             return
         passkey_files = list(extract_dir.rglob("*.Passkey"))
         if not passkey_files:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 未找到 .Passkey 凭据文件", parse_mode='HTML')
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> " + tr("passkey.no_file", lang), parse_mode='HTML')
             return
         success_count = 0
         fail_count = 0
@@ -708,7 +714,7 @@ async def process_passkey_login(update, context, zip_path, user_id, status_msg):
             if i % 3 == 0 or i == len(passkey_files):
                 try:
                     await status_msg.edit_text(
-                        f"""<tg-emoji emoji-id="5942826671290715541">⚙️</tg-emoji> <b>正在通过 Passkey 登录</b>\n\n进度: {i}/{len(passkey_files)}\n<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 成功: {success_count} | <tg-emoji emoji-id="5886496611835581345">❌</tg-emoji> 失败: {fail_count}""",
+                        f"""<tg-emoji emoji-id="5942826671290715541">⚙️</tg-emoji> <b>{tr('passkey.logging_in', lang)}</b>\n\n{tr('shaihuo.progress', lang)}: {i}/{len(passkey_files)}\n<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('shaihuo.success', lang)}: {success_count} | <tg-emoji emoji-id="5886496611835581345">❌</tg-emoji> {tr('2fa.failed', lang)}: {fail_count}""",
                         parse_mode='HTML'
                     )
                 except:
@@ -729,8 +735,8 @@ async def process_passkey_login(update, context, zip_path, user_id, status_msg):
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=f"Passkey_Login_{int(time.time())}.zip",
-                    caption=f"<tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> <b>做号登录完成！</b>\n成功生成: {success_count} 个会话",
+                    caption=f"<tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> <b>{tr('passkey.login_done', lang)}</b>\n{tr('passkey.generated', lang)}: {success_count} {tr('passkey.session_unit', lang)}",
                     parse_mode='HTML'
                 )
         else:
-            await context.bot.send_message(chat_id=update.effective_chat.id, text="<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 全部登录失败", parse_mode='HTML')
+            await context.bot.send_message(chat_id=update.effective_chat.id, text="<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> " + tr("passkey.all_login_failed", lang), parse_mode='HTML')

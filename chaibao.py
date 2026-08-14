@@ -13,6 +13,7 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 logger = logging.getLogger(__name__)
+from i18n import tr, lang_from_update, get_env_i18n
 
 UNPACK_TOOL_BACK = os.getenv("UNPACK_TOOL_BACK", "").replace('\\n', '\n')
 MAX_EXTRACT_SIZE = int(os.getenv("MK_TIME", 4)) * 1024 * 1024
@@ -27,92 +28,90 @@ def safe_extract(zip_ref, target_dir):
             raise Exception(f"非法路径: {member.filename}")
         zip_ref.extract(member, target_dir)
 
-def create_back_button():
+def create_back_button(lang="zh"):
     return InlineKeyboardButton(
-        "返回主菜单", 
+        tr("back_to_main", lang),
         callback_data="back_to_main"
     ).to_dict() | {"icon_custom_emoji_id": BACK_BUTTON_EMOJI_ID}
 
 async def show_unpack_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = str(query.from_user.id)
+    lang = lang_from_update(update)
     await query.answer()
-    
-    keyboard = [[create_back_button()]]
+
+    keyboard = [[create_back_button(lang)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     await query.edit_message_text(
-        text=UNPACK_TOOL_BACK,
+        text=get_env_i18n("UNPACK_TOOL_BACK", lang),
         parse_mode=ParseMode.HTML,
         reply_markup=reply_markup
     )
-    
+
     user_unpack_states[user_id] = {"waiting_zip": True}
 
 async def handle_unpack_document(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: str):
     document = update.message.document
-    
+    lang = lang_from_update(update)
+
     if not document.file_name.endswith('.zip'):
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 请上传ZIP格式的压缩包",
+            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.zip_required", lang),
             parse_mode='HTML',
             reply_markup=reply_markup
         )
         user_unpack_states.pop(user_id, None)
         return
-    
+
     status_msg = await update.message.reply_text(
-        "<tg-emoji emoji-id='5443127283898405358'>📥</tg-emoji> 正在下载文件...",
+        "<tg-emoji emoji-id='5443127283898405358'>📥</tg-emoji> " + tr("err.processing", lang),
         parse_mode='HTML'
     )
-    
+
     try:
         file = await context.bot.get_file(document.file_id)
         zip_path = f"downloads/unpack_{user_id}_{int(time.time())}.zip"
         os.makedirs("downloads", exist_ok=True)
         await file.download_to_drive(zip_path)
-        
+
         await status_msg.edit_text(
-            "<tg-emoji emoji-id='5839200986022812209'>🔍</tg-emoji> 正在解压分析...",
+            "<tg-emoji emoji-id='5839200986022812209'>🔍</tg-emoji> " + tr("unpack.processing", lang),
             parse_mode='HTML'
         )
-        
+
         session_count = await analyze_zip(zip_path, user_id, update, context)
-        
+
         if session_count > 0:
             user_unpack_states[user_id]["zip_path"] = zip_path
             user_unpack_states[user_id]["session_count"] = session_count
             user_unpack_states[user_id]["waiting_format"] = True
-            
-            keyboard = [[create_back_button()]]
+
+            keyboard = [[create_back_button(lang)]]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            
+
             await update.message.reply_text(
-                f"""<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 分析完成
+                f"""<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr("unpack.analysis_done", lang)}
 
-找到 <b>{session_count}</b> 个session文件
+{tr("shaihuo.found_accounts", lang)} <b>{session_count}</b> {tr("unpack.found_session", lang)}
 
-<tg-emoji emoji-id="6005570495603282482">✏️</tg-emoji> <b>请输入拆分格式：</b>
+<tg-emoji emoji-id="6005570495603282482">✏️</tg-emoji> <b>{tr("unpack.input_format", lang)}</b>
 
-• 固定数量: <code>-X-</code> (每个包X个账号)
-• 指定数量: <code>5,5,5</code> (拆成3个包，每包5个)
-• 混合数量: <code>10,8,6</code> (分别指定每包数量)
-
-<tg-emoji emoji-id="5877540355187937244">ℹ️</tg-emoji> 最后一个包可以不满，多余账号会单独打包""",
+{tr("unpack.format_detail", lang)}""",
                 parse_mode='HTML',
                 reply_markup=reply_markup
             )
         else:
-            raise Exception("未找到session文件")
-            
+            raise Exception(tr("unpack.no_session", lang))
+
     except Exception as e:
         logger.error(f"处理文件失败: {e}")
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 处理失败: {str(e)}",
+            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.process_failed', lang)}: {str(e)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -160,38 +159,39 @@ def get_total_size(path):
 async def handle_unpack_format(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     text = update.message.text.strip()
-    
+    lang = lang_from_update(update)
+
     if user_id not in user_unpack_states or not user_unpack_states[user_id].get("waiting_format"):
         return
-    
+
     try:
         format_type, numbers = parse_format(text, user_unpack_states[user_id]["session_count"])
-        
+
         user_unpack_states[user_id]["format_type"] = format_type
         user_unpack_states[user_id]["numbers"] = numbers
-        
-        keyboard = [[create_back_button()]]
+
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
-        format_desc = "固定数量" if format_type == "fixed" else "指定数量"
-        numbers_desc = f"{numbers}个/包" if format_type == "fixed" else f"{numbers}"
-        
+
+        format_desc = tr("unpack.fixed_count", lang) if format_type == "fixed" else tr("unpack.specified", lang)
+        numbers_desc = f"{numbers}{tr('unpack.per_pack', lang)}" if format_type == "fixed" else f"{numbers}"
+
         await update.message.reply_text(
-            f"""<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 格式已确认
+            f"""<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr("unpack.format_confirmed", lang)}
 
-模式: {format_desc}
-配置: {numbers_desc}
-总账号: {user_unpack_states[user_id]['session_count']}个
+{tr("2fa.mode", lang)}: {format_desc}
+{tr("api.total", lang)}: {numbers_desc}
+{tr("shaihuo.total", lang)}: {user_unpack_states[user_id]['session_count']}{tr('shaihuo.accounts', lang)}
 
-<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> 开始拆包处理...""",
+<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> {tr("unpack.start", lang)}...""",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
-        
+
         await process_unpack(update, context, user_id)
-        
+
     except ValueError as e:
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
             f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {str(e)}",
@@ -234,20 +234,21 @@ async def process_unpack(update: Update, context: ContextTypes.DEFAULT_TYPE, use
     format_type = state["format_type"]
     numbers = state["numbers"]
     total_count = state["session_count"]
-    
+    lang = lang_from_update(update)
+
     admins = os.getenv("ADMIN_ID", "").split(",")
-    
+
     try:
         await asyncio.wait_for(
             _process_unpack_internal(update, context, user_id, zip_path, format_type, numbers, total_count, admins),
             timeout=MAX_TASK_TIME
         )
     except asyncio.TimeoutError:
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 任务执行超时 ({MAX_TASK_TIME}秒)",
+            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.task_timeout', lang)} ({MAX_TASK_TIME}秒)",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -259,6 +260,7 @@ async def process_unpack(update: Update, context: ContextTypes.DEFAULT_TYPE, use
         user_unpack_states.pop(user_id, None)
 
 async def _process_unpack_internal(update, context, user_id, zip_path, format_type, numbers, total_count, admins):
+    lang = lang_from_update(update)
     with tempfile.TemporaryDirectory() as temp_dir:
         extract_dir = os.path.join(temp_dir, "extracted")
         os.makedirs(extract_dir, exist_ok=True)
@@ -318,42 +320,42 @@ async def _process_unpack_internal(update, context, user_id, zip_path, format_ty
             start_idx += size
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        
-        summary = f"""<tg-emoji emoji-id="5909201569898827582">✅</tg-emoji> <b>拆包完成</b>
 
-<tg-emoji emoji-id="5931472654660800739">📊</tg-emoji> 统计结果:
-• <tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> 总账号: <b>{total_count}</b>
-• <tg-emoji emoji-id="5877307202888273539">📦</tg-emoji> 生成包数: <b>{len(pack_files)}</b>"""
+        summary = f"""<tg-emoji emoji-id="5909201569898827582">✅</tg-emoji> <b>{tr('unpack.done', lang)}</b>
+
+<tg-emoji emoji-id="5931472654660800739">📊</tg-emoji> {tr('shaihuo.stats', lang)}:
+• <tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> {tr('shaihuo.total', lang)}: <b>{total_count}</b>
+• <tg-emoji emoji-id="5877307202888273539">📦</tg-emoji> {tr('unpack.packs', lang)}: <b>{len(pack_files)}</b>"""
 
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=summary,
             parse_mode='HTML'
         )
-        
+
         for i, pack_zip in enumerate(pack_files, 1):
             with open(pack_zip, 'rb') as f:
                 await context.bot.send_document(
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=f"pack_{i:02d}_{timestamp}.zip",
-                    caption=f"<b>第{i:02d}包 ({pack_sizes[i-1]}个账号)</b>",
+                    caption=f"<b>{tr('unpack.pack', lang)}{i:02d} ({pack_sizes[i-1]}{tr('shaihuo.accounts', lang)})</b>",
                     parse_mode='HTML'
                 )
-        
+
         for admin_id in admins:
             admin_id = admin_id.strip()
             if not admin_id:
                 continue
-            
+
             try:
                 await context.bot.send_message(
                     chat_id=admin_id,
-                    text=f"""<tg-emoji emoji-id="5909201569898827582">📢</tg-emoji> <b>拆包任务完成</b>
+                    text=f"""<tg-emoji emoji-id="5909201569898827582">📢</tg-emoji> <b>{tr('unpack.task_done', lang)}</b>
 
-<tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> 用户: <code>{user_id}</code>
-<tg-emoji emoji-id="5886412370347036129">📊</tg-emoji> 总账号: <b>{total_count}</b>
-<tg-emoji emoji-id="5877307202888273539">📦</tg-emoji> 生成包数: <b>{len(pack_files)}</b>""",
+<tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> {tr('admin.user', lang)}: <code>{user_id}</code>
+<tg-emoji emoji-id="5886412370347036129">📊</tg-emoji> {tr('shaihuo.total', lang)}: <b>{total_count}</b>
+<tg-emoji emoji-id="5877307202888273539">📦</tg-emoji> {tr('unpack.packs', lang)}: <b>{len(pack_files)}</b>""",
                     parse_mode='HTML'
                 )
                 

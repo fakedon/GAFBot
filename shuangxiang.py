@@ -17,6 +17,7 @@ import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
+from i18n import tr, lang_from_update, get_env_i18n
 
 logger = logging.getLogger(__name__)
 from dotenv import load_dotenv
@@ -149,9 +150,9 @@ def repair_session(session_path):
         logger.error(f"修复 {session_path} 失败: {e}")
         return False
 
-def create_back_button():
+def create_back_button(lang="zh"):
     return InlineKeyboardButton(
-        "返回主菜单", 
+        tr("back_to_main", lang),
         callback_data="back_to_main"
     ).to_dict() | {"icon_custom_emoji_id": BACK_BUTTON_EMOJI_ID}
 
@@ -163,15 +164,16 @@ def safe_extract(zip_ref, target_dir):
         zip_ref.extract(member, target_dir)
 
 async def show_bidirectional(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = lang_from_update(update)
     query = update.callback_query
     user_id = str(query.from_user.id)
     await query.answer()
-    
-    keyboard = [[create_back_button()]]
+
+    keyboard = [[create_back_button(lang)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     await query.edit_message_text(
-        text=TEST_BIDIRECTIONAL_BACK,
+        text=get_env_i18n("TEST_BIDIRECTIONAL_BACK", lang),
         parse_mode=ParseMode.HTML,
         reply_markup=reply_markup
     )
@@ -578,45 +580,46 @@ async def process_session(session_file, json_file, api_id, api_hash, tdata_dir=N
     return result
 
 async def handle_bidirectional_document(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: str):
+    lang = lang_from_update(update)
     document = update.message.document
     zip_path = None
-    
+
     if not document.file_name.endswith('.zip'):
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 请上传ZIP格式的压缩包",
+            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.zip_required", lang),
             parse_mode='HTML',
             reply_markup=reply_markup
         )
         context.user_data.pop('bidirectional_state', None)
         user_bidirectional_states.pop(user_id, None)
         return
-    
+
     status_msg = await update.message.reply_text(
-        "<tg-emoji emoji-id='5443127283898405358'>📥</tg-emoji> 正在下载文件...",
+        "<tg-emoji emoji-id='5443127283898405358'>📥</tg-emoji> " + tr("err.processing", lang),
         parse_mode='HTML'
     )
-    
+
     try:
         file = await context.bot.get_file(document.file_id)
         zip_path = f"downloads/bidirectional_{user_id}_{int(time.time())}.zip"
         os.makedirs("downloads", exist_ok=True)
         await file.download_to_drive(zip_path)
-        
+
         await status_msg.edit_text(
-            "<tg-emoji emoji-id='5839200986022812209'>🔍</tg-emoji> 开始处理双向测试...",
+            "<tg-emoji emoji-id='5839200986022812209'>🔍</tg-emoji> " + tr("bidir.processing", lang),
             parse_mode='HTML'
         )
-        
+
         await process_bidirectional(update, context, zip_path, user_id)
-        
+
     except Exception as e:
         logger.error(f"处理文件失败: {e}")
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 处理失败: {str(e)}",
+            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.process_failed", lang) + f": {str(e)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -636,50 +639,52 @@ async def handle_bidirectional_document(update: Update, context: ContextTypes.DE
             pass
 
 async def process_bidirectional(update, context, zip_path, user_id):
+    lang = lang_from_update(update)
     api_id_str = os.getenv("TELEGRAM_APP_ID")
     api_hash = os.getenv("TELEGRAM_APP_HASH")
     admins = os.getenv("ADMIN_ID", "").split(",")
-    
+
     if not api_id_str or not api_hash:
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 系统未配置，请联系管理员",
+            text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.system_not_configured", lang),
             parse_mode='HTML',
             reply_markup=reply_markup
         )
         return
-    
+
     try:
         api_id = int(api_id_str)
     except (ValueError, TypeError):
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> API配置错误，请联系管理员",
+            text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.api_config_error", lang),
             parse_mode='HTML',
             reply_markup=reply_markup
         )
         return
-    
+
     try:
         await asyncio.wait_for(
-            _process_bidirectional_internal(update, context, zip_path, user_id, api_id, api_hash, admins), 
+            _process_bidirectional_internal(update, context, zip_path, user_id, api_id, api_hash, admins),
             timeout=MAX_TASK_TIME
         )
     except asyncio.TimeoutError:
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 任务执行超时 ({MAX_TASK_TIME}秒)",
+            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.task_timeout", lang) + f" ({MAX_TASK_TIME}秒)",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
 
 async def _process_bidirectional_internal(update, context, zip_path, user_id, api_id, api_hash, admins):
+    lang = lang_from_update(update)
     with tempfile.TemporaryDirectory() as temp_dir:
         extract_dir = os.path.join(temp_dir, "extracted")
         os.makedirs(extract_dir, exist_ok=True)
@@ -692,11 +697,11 @@ async def _process_bidirectional_internal(update, context, zip_path, user_id, ap
                 if extracted_size > MAX_EXTRACT_SIZE:
                     raise Exception(f"解压后文件过大 ({extracted_size//1024//1024}MB > {MAX_EXTRACT_SIZE//1024//1024}MB)")
         except Exception as e:
-            keyboard = [[create_back_button()]]
+            keyboard = [[create_back_button(lang)]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 解压失败: {str(e)}",
+                text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.extract_failed", lang) + f": {str(e)}",
                 parse_mode='HTML',
                 reply_markup=reply_markup
             )
@@ -719,22 +724,22 @@ async def _process_bidirectional_internal(update, context, zip_path, user_id, ap
         else:
             tdata_dirs = find_tdata_folders(extract_dir)
             if not tdata_dirs:
-                keyboard = [[create_back_button()]]
+                keyboard = [[create_back_button(lang)]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
-                    text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 未找到session或tdata文件夹",
+                    text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.no_session_tdata", lang),
                     parse_mode='HTML',
                     reply_markup=reply_markup
                 )
                 return
-            
+
             status_msg = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>检测到tdata，正在转换为session...</b>
+                text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('shaihuo.converting', lang)}</b>
 
-找到 <b>{len(tdata_dirs)}</b> 个tdata文件夹
-请稍候...""",
+{tr('shaihuo.found_accounts', lang)} <b>{len(tdata_dirs)}</b> tdata
+{tr('err.processing', lang)}...""",
                 parse_mode='HTML'
             )
             
@@ -762,38 +767,38 @@ async def _process_bidirectional_internal(update, context, zip_path, user_id, ap
                 if i % 3 == 0 or i == len(tdata_dirs):
                     try:
                         await status_msg.edit_text(
-                            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>tdata转换进度</b>
+                            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('shaihuo.convert_progress', lang)}</b>
 
-进度: {i}/{len(tdata_dirs)}
-成功: {len(accounts)}""",
+{tr('shaihuo.progress', lang)}: {i}/{len(tdata_dirs)}
+{tr('shaihuo.success', lang)}: {len(accounts)}""",
                             parse_mode='HTML'
                         )
                     except:
                         pass
                 await asyncio.sleep(0.2)
-            
+
             try:
                 await status_msg.delete()
             except:
                 pass
-            
+
             if not accounts:
-                keyboard = [[create_back_button()]]
+                keyboard = [[create_back_button(lang)]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
-                    text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 所有tdata转换失败，无法继续",
+                    text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.all_tdata_failed", lang),
                     parse_mode='HTML',
                     reply_markup=reply_markup
                 )
                 return
-        
+
         status_msg = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>双向测试进行中</b>
+            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('bidir.in_progress', lang)}</b>
 
-找到 <b>{len(accounts)}</b> 个账号
-<tg-emoji emoji-id="5775887550262546277">🔄</tg-emoji>正在检查限制状态，请稍候...""",
+{tr('shaihuo.found_accounts', lang)} <b>{len(accounts)}</b> {tr('shaihuo.accounts', lang)}
+<tg-emoji emoji-id="5775887550262546277">🔄</tg-emoji>{tr('bidir.processing', lang)}...""",
             parse_mode='HTML'
         )
         
@@ -813,10 +818,10 @@ async def _process_bidirectional_internal(update, context, zip_path, user_id, ap
             if i % 3 == 0 or i == len(accounts):
                 try:
                     await status_msg.edit_text(
-                        text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>双向测试进行中</b>
+                        text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('bidir.in_progress', lang)}</b>
 
-进度: {i}/{len(accounts)}
-<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>无限制: {unlimited_count} | <tg-emoji emoji-id="5922712343011135025">⚠️</tg-emoji>有限制: {limited_count} | <tg-emoji emoji-id="5886496611835581345">❌</tg-emoji>失败: {failed_count}""",
+{tr('shaihuo.progress', lang)}: {i}/{len(accounts)}
+<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>{tr('bidir.unlimited', lang)}: {unlimited_count} | <tg-emoji emoji-id="5922712343011135025">⚠️</tg-emoji>{tr('bidir.limited', lang)}: {limited_count} | <tg-emoji emoji-id="5886496611835581345">❌</tg-emoji>{tr('2fa.failed', lang)}: {failed_count}""",
                         parse_mode='HTML'
                     )
                 except:
@@ -882,65 +887,65 @@ async def _process_bidirectional_internal(update, context, zip_path, user_id, ap
                         arcname = os.path.relpath(file_path, failed_dir)
                         zipf.write(file_path, arcname)
         
-        result_text = f"""<tg-emoji emoji-id="5909201569898827582">✅</tg-emoji> <b>双向测试完成</b>
+        result_text = f"""<tg-emoji emoji-id="5909201569898827582">✅</tg-emoji> <b>{tr('bidir.done', lang)}</b>
 
-<tg-emoji emoji-id="5931472654660800739">📊</tg-emoji> 统计结果:
-• <tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> 总账号: <b>{len(accounts)}</b>
-• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 无限制: <b>{unlimited_count}</b>
-• <tg-emoji emoji-id="5922712343011135025">⚠️</tg-emoji> 有限制: <b>{limited_count}</b>
-• <tg-emoji emoji-id="5886496611835581345">❌</tg-emoji> 失败: <b>{failed_count}</b>"""
+<tg-emoji emoji-id="5931472654660800739">📊</tg-emoji> {tr('shaihuo.stats', lang)}:
+• <tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> {tr('shaihuo.total', lang)}: <b>{len(accounts)}</b>
+• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('bidir.unlimited', lang)}: <b>{unlimited_count}</b>
+• <tg-emoji emoji-id="5922712343011135025">⚠️</tg-emoji> {tr('bidir.limited', lang)}: <b>{limited_count}</b>
+• <tg-emoji emoji-id="5886496611835581345">❌</tg-emoji> {tr('2fa.failed', lang)}: <b>{failed_count}</b>"""
 
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=result_text,
             parse_mode='HTML'
         )
-        
+
         if unlimited_count > 0:
             with open(unlimited_zip, 'rb') as f:
                 await context.bot.send_document(
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=f"unlimited_{timestamp}.zip",
-                    caption=f"<b><tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> 无限制账户 ({unlimited_count}个)</b>",
+                    caption=f"<b><tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> {tr('bidir.unlimited_caption', lang)} ({unlimited_count})</b>",
                     parse_mode='HTML'
                 )
-        
+
         if limited_count > 0:
             with open(limited_zip, 'rb') as f:
                 await context.bot.send_document(
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=f"limited_{timestamp}.zip",
-                    caption=f"<b><tg-emoji emoji-id='5922712343011135025'>⚠️</tg-emoji> 有限制账户 ({limited_count}个)</b>",
+                    caption=f"<b><tg-emoji emoji-id='5922712343011135025'>⚠️</tg-emoji> {tr('bidir.limited_caption', lang)} ({limited_count})</b>",
                     parse_mode='HTML'
                 )
-        
+
         if failed_count > 0:
             with open(failed_zip, 'rb') as f:
                 await context.bot.send_document(
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=f"failed_{timestamp}.zip",
-                    caption=f"<b><tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 失败 ({failed_count}个)</b>",
+                    caption=f"<b><tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> {tr('2fa.failed', lang)} ({failed_count})</b>",
                     parse_mode='HTML'
                 )
-        
+
         for admin_id in admins:
             admin_id = admin_id.strip()
             if not admin_id:
                 continue
-            
+
             try:
                 await context.bot.send_message(
                     chat_id=admin_id,
-                    text=f"""<tg-emoji emoji-id="5909201569898827582">📢</tg-emoji> <b>双向测试任务完成</b>
+                    text=f"""<tg-emoji emoji-id="5909201569898827582">📢</tg-emoji> <b>{tr('bidir.task_done', lang)}</b>
 
-<tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> 用户: <code>{user_id}</code>
-<tg-emoji emoji-id="5886412370347036129">📊</tg-emoji> 总账号: <b>{len(accounts)}</b>
-• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 无限制: <b>{unlimited_count}</b>
-• <tg-emoji emoji-id="5922712343011135025">⚠️</tg-emoji> 有限制: <b>{limited_count}</b>
-• <tg-emoji emoji-id="5886496611835581345">❌</tg-emoji> 失败: <b>{failed_count}</b>""",
+<tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> {tr('admin.user', lang)}: <code>{user_id}</code>
+<tg-emoji emoji-id="5886412370347036129">📊</tg-emoji> {tr('shaihuo.total', lang)}: <b>{len(accounts)}</b>
+• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('bidir.unlimited', lang)}: <b>{unlimited_count}</b>
+• <tg-emoji emoji-id="5922712343011135025">⚠️</tg-emoji> {tr('bidir.limited', lang)}: <b>{limited_count}</b>
+• <tg-emoji emoji-id="5886496611835581345">❌</tg-emoji> {tr('2fa.failed', lang)}: <b>{failed_count}</b>""",
                     parse_mode='HTML'
                 )
                 

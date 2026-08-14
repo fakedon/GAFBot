@@ -18,6 +18,7 @@ from opentele.api import API
 from opentele.td import TDesktop
 
 logger = logging.getLogger(__name__)
+from i18n import tr, lang_from_update, get_env_i18n
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -94,9 +95,9 @@ def create_proxy_dict(proxy):
         'rdns': True
     }
 
-def create_back_button():
+def create_back_button(lang="zh"):
     return InlineKeyboardButton(
-        "返回主菜单",
+        tr("back_to_main", lang),
         callback_data="back_to_main"
     ).to_dict() | {"icon_custom_emoji_id": BACK_BUTTON_EMOJI_ID}
 
@@ -232,16 +233,17 @@ async def convert_tdata_to_session_with_proxy(tdata_dir, output_dir, twofa, prox
 
 async def show_convert_api(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
+    lang = lang_from_update(update)
     await query.answer()
     keyboard = [
-        [InlineKeyboardButton("无2FA", callback_data="api_no_2fa")],
-        [InlineKeyboardButton("手动输入2FA", callback_data="api_manual_2fa")],
-        [InlineKeyboardButton("从JSON提取", callback_data="api_from_json")],
-        [create_back_button()]
+        [InlineKeyboardButton(tr("api.no_2fa", lang), callback_data="api_no_2fa")],
+        [InlineKeyboardButton(tr("api.manual_2fa", lang), callback_data="api_manual_2fa")],
+        [InlineKeyboardButton(tr("api.from_json", lang), callback_data="api_from_json")],
+        [create_back_button(lang)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
-        text="请选择2FA处理方式：",
+        text=tr("api.select_2fa", lang),
         parse_mode=ParseMode.HTML,
         reply_markup=reply_markup
     )
@@ -251,31 +253,32 @@ async def handle_api_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = str(query.from_user.id)
     data = query.data
+    lang = lang_from_update(update)
     await query.answer()
     if data == "api_no_2fa":
         user_api_states[user_id] = {"mode": "no_2fa", "waiting_zip": True}
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
-            text="请上传session或tdata的ZIP包（无2FA）",
+            text=tr("api.upload_no_2fa", lang),
             parse_mode=ParseMode.HTML,
             reply_markup=reply_markup
         )
     elif data == "api_manual_2fa":
         user_api_states[user_id] = {"mode": "manual", "waiting_2fa": True}
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
-            text="请输入2FA密码：",
+            text=tr("api.input_2fa", lang),
             parse_mode=ParseMode.HTML,
             reply_markup=reply_markup
         )
     elif data == "api_from_json":
         user_api_states[user_id] = {"mode": "from_json", "waiting_zip": True}
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
-            text="请上传session或tdata的ZIP包（将自动从JSON提取2FA和手机号）",
+            text=tr("api.upload_from_json", lang),
             parse_mode=ParseMode.HTML,
             reply_markup=reply_markup
         )
@@ -283,12 +286,13 @@ async def handle_api_mode(update: Update, context: ContextTypes.DEFAULT_TYPE):
 async def handle_api_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     text = update.message.text
+    lang = lang_from_update(update)
     if user_id not in user_api_states or not user_api_states[user_id].get("waiting_2fa"):
         return
     try:
         safe_2fa = sanitize_2fa(text.strip())
     except ValueError as e:
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
             f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {str(e)}",
@@ -300,10 +304,10 @@ async def handle_api_text(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_api_states[user_id]["two_fa"] = safe_2fa
     user_api_states[user_id]["waiting_2fa"] = False
     user_api_states[user_id]["waiting_zip"] = True
-    keyboard = [[create_back_button()]]
+    keyboard = [[create_back_button(lang)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await update.message.reply_text(
-        "2FA已记录，请上传session或tdata的ZIP包",
+        tr("api.2fa_recorded", lang),
         parse_mode=ParseMode.HTML,
         reply_markup=reply_markup
     )
@@ -313,28 +317,29 @@ def generate_id():
 
 async def handle_api_document(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: str):
     document = update.message.document
+    lang = lang_from_update(update)
     if not document.file_name.endswith('.zip'):
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 请上传ZIP格式",
+            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.zip_required", lang),
             parse_mode='HTML',
             reply_markup=reply_markup
         )
         user_api_states.pop(user_id, None)
         return
     if document.file_size > MAX_ZIP_SIZE:
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 文件过大（最大{MAX_ZIP_SIZE//(1024*1024)}MB）",
+            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.file_too_large', lang)}（{MAX_ZIP_SIZE//(1024*1024)}MB）",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
         user_api_states.pop(user_id, None)
         return
     status_msg = await update.message.reply_text(
-        "<tg-emoji emoji-id='5443127283898405358'>📥</tg-emoji> 正在下载文件...",
+        "<tg-emoji emoji-id='5443127283898405358'>📥</tg-emoji> " + tr("err.processing", lang),
         parse_mode='HTML'
     )
     try:
@@ -343,7 +348,7 @@ async def handle_api_document(update: Update, context: ContextTypes.DEFAULT_TYPE
         os.makedirs("downloads", exist_ok=True)
         await file.download_to_drive(zip_path)
         await status_msg.edit_text(
-            "<tg-emoji emoji-id='5839200986022812209'>🔍</tg-emoji> 开始处理转换...",
+            "<tg-emoji emoji-id='5839200986022812209'>🔍</tg-emoji> " + tr("api.processing", lang),
             parse_mode='HTML'
         )
         mode = user_api_states[user_id].get("mode", "no_2fa")
@@ -355,10 +360,10 @@ async def handle_api_document(update: Update, context: ContextTypes.DEFAULT_TYPE
             pass
     except Exception as e:
         logger.error(f"处理失败: {e}")
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 处理失败: {str(e)[:50]}",
+            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.process_failed', lang)}: {str(e)[:50]}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -372,6 +377,7 @@ async def handle_api_document(update: Update, context: ContextTypes.DEFAULT_TYPE
 async def process_conversion(update, context, zip_path, user_id, mode, manual_2fa=None):
     api_id = int(os.getenv("TELEGRAM_APP_ID"))
     api_hash = os.getenv("TELEGRAM_APP_HASH")
+    lang = lang_from_update(update)
     with tempfile.TemporaryDirectory() as tmp:
         extract_dir = os.path.join(tmp, "extracted")
         os.makedirs(extract_dir)
@@ -379,11 +385,11 @@ async def process_conversion(update, context, zip_path, user_id, mode, manual_2f
             with zipfile.ZipFile(zip_path, 'r') as zf:
                 safe_extract(zf, extract_dir)
         except Exception as e:
-            keyboard = [[create_back_button()]]
+            keyboard = [[create_back_button(lang)]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 解压失败: {str(e)[:50]}",
+                text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.extract_failed', lang)}: {str(e)[:50]}",
                 parse_mode='HTML',
                 reply_markup=reply_markup
             )
@@ -407,10 +413,10 @@ async def process_conversion(update, context, zip_path, user_id, mode, manual_2f
         elif tdata_dirs:
             status_msg = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>检测到tdata，正在转换为session...</b>
+                text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('shaihuo.converting', lang)}</b>
 
-找到 <b>{len(tdata_dirs)}</b> 个tdata文件夹
-请稍候...""",
+{tr('shaihuo.found_accounts', lang)} <b>{len(tdata_dirs)}</b> {tr('shaihuo.accounts', lang)}
+{tr('unpack.processing', lang)}...""",
                 parse_mode='HTML'
             )
             convert_temp_dir = os.path.join(tmp, "converted_sessions")
@@ -432,10 +438,10 @@ async def process_conversion(update, context, zip_path, user_id, mode, manual_2f
                 if i % 3 == 0 or i == len(tdata_dirs):
                     try:
                         await status_msg.edit_text(
-                            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>tdata转换进度</b>
+                            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('shaihuo.convert_progress', lang)}</b>
 
-进度: {i}/{len(tdata_dirs)}
-成功: {len(accounts)}""",
+{tr('shaihuo.progress', lang)}: {i}/{len(tdata_dirs)}
+{tr('shaihuo.success', lang)}: {len(accounts)}""",
                             parse_mode='HTML'
                         )
                     except:
@@ -446,28 +452,28 @@ async def process_conversion(update, context, zip_path, user_id, mode, manual_2f
             except:
                 pass
             if not accounts:
-                keyboard = [[create_back_button()]]
+                keyboard = [[create_back_button(lang)]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
-                    text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 所有tdata转换失败，无法继续",
+                    text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.all_tdata_failed", lang),
                     parse_mode='HTML',
                     reply_markup=reply_markup
                 )
                 return
         else:
-            keyboard = [[create_back_button()]]
+            keyboard = [[create_back_button(lang)]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 未找到session或tdata文件",
+                text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.no_session_tdata", lang),
                 parse_mode='HTML',
                 reply_markup=reply_markup
             )
             return
         progress_msg = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"<tg-emoji emoji-id='5839200986022812209'>🔄</tg-emoji> 处理中: 0/{len(accounts)}",
+            text=f"<tg-emoji emoji-id='5839200986022812209'>🔄</tg-emoji> {tr('api.processing_count', lang)}: 0/{len(accounts)}",
             parse_mode='HTML'
         )
         os.makedirs("acd", exist_ok=True)
@@ -552,7 +558,7 @@ async def process_conversion(update, context, zip_path, user_id, mode, manual_2f
             if i % 5 == 0 or i == len(accounts):
                 try:
                     await progress_msg.edit_text(
-                        f"<tg-emoji emoji-id='5839200986022812209'>🔄</tg-emoji> 处理中: {i}/{len(accounts)}",
+                        f"<tg-emoji emoji-id='5839200986022812209'>🔄</tg-emoji> {tr('api.processing_count', lang)}: {i}/{len(accounts)}",
                         parse_mode='HTML'
                     )
                 except:
@@ -575,9 +581,9 @@ async def process_conversion(update, context, zip_path, user_id, mode, manual_2f
         await progress_msg.delete()
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"""<tg-emoji emoji-id="5909201569898827582">✅</tg-emoji> <b>转换完成</b>
+            text=f"""<tg-emoji emoji-id="5909201569898827582">✅</tg-emoji> <b>{tr('api.done', lang)}</b>
 
-<tg-emoji emoji-id="5931472654660800739">📊</tg-emoji> 总计: <b>{len(accounts)}</b>""",
+<tg-emoji emoji-id="5931472654660800739">📊</tg-emoji> {tr('api.total', lang)}: <b>{len(accounts)}</b>""",
             parse_mode='HTML'
         )
         with open(txt_path, 'rb') as f:
@@ -585,6 +591,6 @@ async def process_conversion(update, context, zip_path, user_id, mode, manual_2f
                 chat_id=update.effective_chat.id,
                 document=f,
                 filename=f"api_links_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                caption=f'<b><tg-emoji emoji-id="5877540355187937244">📁</tg-emoji> API链接</b>',
+                caption=f'<b><tg-emoji emoji-id="5877540355187937244">📁</tg-emoji> {tr("api.link_caption", lang)}</b>',
                 parse_mode='HTML'
             )

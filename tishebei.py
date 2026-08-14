@@ -20,6 +20,8 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 from dotenv import load_dotenv
 
+from i18n import tr, lang_from_update, get_env_i18n
+
 load_dotenv()
 logger = logging.getLogger(__name__)
 
@@ -108,9 +110,9 @@ def create_proxy_dict(proxy):
         'rdns': True
     }
 
-def create_back_button():
+def create_back_button(lang="zh"):
     return InlineKeyboardButton(
-        "返回主菜单",
+        tr("back_to_main", lang),
         callback_data="back_to_main"
     ).to_dict() | {"icon_custom_emoji_id": BACK_BUTTON_EMOJI_ID}
 
@@ -346,14 +348,15 @@ async def generate_json_for_session(session_file, client, me, api_id, api_hash, 
         return None
 
 async def show_kick_devices(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = lang_from_update(update)
     query = update.callback_query
     await query.answer()
 
-    keyboard = [[create_back_button()]]
+    keyboard = [[create_back_button(lang)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(
-        text=KICK_DEVICES_BACK,
+        text=get_env_i18n("KICK_DEVICES_BACK", lang),
         parse_mode=ParseMode.HTML,
         reply_markup=reply_markup
     )
@@ -595,14 +598,15 @@ async def check_session_kick(session_file, json_file, api_id, api_hash, tdata_di
     return result
 
 async def handle_kick_document(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id):
+    lang = lang_from_update(update)
     document = update.message.document
 
     if not document.file_name.endswith('.zip'):
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await update.message.reply_text(
-            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 请上传ZIP格式的压缩包",
+            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.zip_required', lang)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -610,7 +614,7 @@ async def handle_kick_document(update: Update, context: ContextTypes.DEFAULT_TYP
         return
 
     status_msg = await update.message.reply_text(
-        "<tg-emoji emoji-id='5443127283898405358'>📥</tg-emoji> 正在下载文件...",
+        f"<tg-emoji emoji-id='5443127283898405358'>📥</tg-emoji> {tr('err.processing', lang)}",
         parse_mode='HTML'
     )
 
@@ -621,7 +625,7 @@ async def handle_kick_document(update: Update, context: ContextTypes.DEFAULT_TYP
         await file.download_to_drive(zip_path)
 
         await status_msg.edit_text(
-            "<tg-emoji emoji-id='5839200986022812209'>🔍</tg-emoji> 开始处理踢设备任务...",
+            f"<tg-emoji emoji-id='5839200986022812209'>🔍</tg-emoji> {tr('kick.processing', lang)}",
             parse_mode='HTML'
         )
 
@@ -634,11 +638,11 @@ async def handle_kick_document(update: Update, context: ContextTypes.DEFAULT_TYP
 
     except Exception as e:
         logger.error(f"处理文件失败: {e}")
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await update.message.reply_text(
-            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 处理失败: {str(e)}",
+            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.process_failed', lang)}: {str(e)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -650,14 +654,15 @@ async def handle_kick_document(update: Update, context: ContextTypes.DEFAULT_TYP
             pass
 
 async def process_kick(update, context, zip_path, user_id):
+    lang = lang_from_update(update)
     file_size = os.path.getsize(zip_path)
     if file_size > MAX_ZIP_SIZE:
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 文件过大，最大允许 {MAX_ZIP_SIZE//1024//1024}MB",
+            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.file_size_max', lang).format(mb=MAX_ZIP_SIZE//1024//1024)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -668,12 +673,12 @@ async def process_kick(update, context, zip_path, user_id):
     admins = os.getenv("ADMIN_ID", "").split(",")
 
     if not api_id_str or not api_hash:
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 系统未配置，请联系管理员",
+            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.system_not_configured', lang)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -682,12 +687,12 @@ async def process_kick(update, context, zip_path, user_id):
     try:
         api_id = int(api_id_str)
     except (ValueError, TypeError):
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> API配置错误，请联系管理员",
+            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.api_config_error', lang)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -699,17 +704,18 @@ async def process_kick(update, context, zip_path, user_id):
             timeout=MAX_TASK_TIME
         )
     except asyncio.TimeoutError:
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 任务执行超时 ({MAX_TASK_TIME}秒)",
+            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.task_timeout', lang)} ({MAX_TASK_TIME}s)",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
 
 async def _process_kick_internal(update, context, zip_path, user_id, api_id, api_hash, admins):
+    lang = lang_from_update(update)
     with tempfile.TemporaryDirectory() as temp_dir:
         extract_dir = os.path.join(temp_dir, "extracted")
         os.makedirs(extract_dir, exist_ok=True)
@@ -718,12 +724,12 @@ async def _process_kick_internal(update, context, zip_path, user_id, api_id, api
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 safe_extract(zip_ref, extract_dir)
         except Exception as e:
-            keyboard = [[create_back_button()]]
+            keyboard = [[create_back_button(lang)]]
             reply_markup = InlineKeyboardMarkup(keyboard)
 
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 解压失败: {str(e)}",
+                text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.extract_failed', lang)}: {str(e)}",
                 parse_mode='HTML',
                 reply_markup=reply_markup
             )
@@ -746,12 +752,12 @@ async def _process_kick_internal(update, context, zip_path, user_id, api_id, api
         else:
             tdata_dirs = find_tdata_folders(extract_dir)
             if not tdata_dirs:
-                keyboard = [[create_back_button()]]
+                keyboard = [[create_back_button(lang)]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
 
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
-                    text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 未找到session或tdata文件夹",
+                    text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.no_session_tdata', lang)}",
                     parse_mode='HTML',
                     reply_markup=reply_markup
                 )
@@ -759,10 +765,10 @@ async def _process_kick_internal(update, context, zip_path, user_id, api_id, api
 
             status_msg = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>检测到tdata，正在转换为session...</b>
+                text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('shaihuo.converting', lang)}</b>
 
-找到 <b>{len(tdata_dirs)}</b> 个tdata文件夹
-请稍候...""",
+{tr('shaihuo.found_accounts', lang)} <b>{len(tdata_dirs)}</b> {tr('common.tdata_folders', lang)}
+{tr('common.please_wait', lang)}""",
                 parse_mode='HTML'
             )
 
@@ -790,10 +796,10 @@ async def _process_kick_internal(update, context, zip_path, user_id, api_id, api
                 if i % 3 == 0 or i == len(tdata_dirs):
                     try:
                         await status_msg.edit_text(
-                            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>tdata转换进度</b>
+                            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('shaihuo.convert_progress', lang)}</b>
 
-进度: {i}/{len(tdata_dirs)}
-成功: {len(accounts)}""",
+{tr('shaihuo.progress', lang)}: {i}/{len(tdata_dirs)}
+{tr('shaihuo.success', lang)}: {len(accounts)}""",
                             parse_mode='HTML'
                         )
                     except:
@@ -806,12 +812,12 @@ async def _process_kick_internal(update, context, zip_path, user_id, api_id, api
                 pass
 
             if not accounts:
-                keyboard = [[create_back_button()]]
+                keyboard = [[create_back_button(lang)]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
 
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
-                    text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 所有tdata转换失败，无法继续",
+                    text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.all_tdata_failed', lang)}",
                     parse_mode='HTML',
                     reply_markup=reply_markup
                 )
@@ -819,10 +825,10 @@ async def _process_kick_internal(update, context, zip_path, user_id, api_id, api
 
         status_msg = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>踢设备进行中</b>
+            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('kick.in_progress', lang)}</b>
 
-找到 <b>{len(accounts)}</b> 个账号
-<tg-emoji emoji-id="5775887550262546277">🔄</tg-emoji>正在处理，请稍候...""",
+{tr('shaihuo.found_accounts', lang)} <b>{len(accounts)}</b> {tr('shaihuo.accounts', lang)}
+<tg-emoji emoji-id="5775887550262546277">🔄</tg-emoji>{tr('common.processing_wait', lang)}""",
             parse_mode='HTML'
         )
 
@@ -839,10 +845,10 @@ async def _process_kick_internal(update, context, zip_path, user_id, api_id, api
             if i % 3 == 0 or i == len(accounts):
                 try:
                     await status_msg.edit_text(
-                        text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>踢设备进行中</b>
+                        text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('kick.in_progress', lang)}</b>
 
-进度: {i}/{len(accounts)}
-<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>成功: {success_count} | <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji>失败: {failed_count}""",
+{tr('shaihuo.progress', lang)}: {i}/{len(accounts)}
+<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>{tr('shaihuo.success', lang)}: {success_count} | <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji>{tr('2fa.failed', lang)}: {failed_count}""",
                         parse_mode='HTML'
                     )
                 except:
@@ -897,12 +903,12 @@ async def _process_kick_internal(update, context, zip_path, user_id, api_id, api
                         arcname = os.path.relpath(file_path, failed_dir)
                         zipf.write(file_path, arcname)
 
-        result_text = f"""<tg-emoji emoji-id="5909201569898827582">✅</tg-emoji> <b>踢设备完成</b>
+        result_text = f"""<tg-emoji emoji-id="5909201569898827582">✅</tg-emoji> <b>{tr('kick.done', lang)}</b>
 
-<tg-emoji emoji-id="5931472654660800739">📊</tg-emoji> 统计结果:
-• <tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> 总账号: <b>{len(accounts)}</b>
-• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 成功: <b>{success_count}</b>
-• <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> 失败: <b>{failed_count}</b>"""
+<tg-emoji emoji-id="5931472654660800739">📊</tg-emoji> {tr('shaihuo.stats', lang)}:
+• <tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> {tr('shaihuo.total', lang)}: <b>{len(accounts)}</b>
+• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('shaihuo.success', lang)}: <b>{success_count}</b>
+• <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> {tr('2fa.failed', lang)}: <b>{failed_count}</b>"""
 
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
@@ -916,7 +922,7 @@ async def _process_kick_internal(update, context, zip_path, user_id, api_id, api
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=f"success_{timestamp}.zip",
-                    caption=f"<b><tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> 成功踢设备 ({success_count}个)</b>",
+                    caption=f"<b><tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> {tr('kick.success_caption', lang)} ({success_count}{tr('common.count', lang)})</b>",
                     parse_mode='HTML'
                 )
 
@@ -926,7 +932,7 @@ async def _process_kick_internal(update, context, zip_path, user_id, api_id, api
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=f"failed_{timestamp}.zip",
-                    caption=f"<b><tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> 失败 ({failed_count}个)</b>",
+                    caption=f"<b><tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> {tr('2fa.failed', lang)} ({failed_count}{tr('common.count', lang)})</b>",
                     parse_mode='HTML'
                 )
 
@@ -938,12 +944,12 @@ async def _process_kick_internal(update, context, zip_path, user_id, api_id, api
             try:
                 await context.bot.send_message(
                     chat_id=admin_id,
-                    text=f"""<tg-emoji emoji-id="5909201569898827582">📢</tg-emoji> <b>踢设备任务完成</b>
+                    text=f"""<tg-emoji emoji-id="5909201569898827582">📢</tg-emoji> <b>{tr('kick.task_done', lang)}</b>
 
-<tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> 用户: <code>{user_id}</code>
-<tg-emoji emoji-id="5886412370347036129">📊</tg-emoji> 总账号: <b>{len(accounts)}</b>
-• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 成功: <b>{success_count}</b>
-• <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> 失败: <b>{failed_count}</b>""",
+<tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> {tr('admin.user', lang)}: <code>{user_id}</code>
+<tg-emoji emoji-id="5886412370347036129">📊</tg-emoji> {tr('shaihuo.total', lang)}: <b>{len(accounts)}</b>
+• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('shaihuo.success', lang)}: <b>{success_count}</b>
+• <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> {tr('2fa.failed', lang)}: <b>{failed_count}</b>""",
                     parse_mode='HTML'
                 )
 

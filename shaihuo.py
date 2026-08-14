@@ -16,6 +16,7 @@ from opentele.api import API, UseCurrentSession
 from opentele.td import TDesktop
 from telethon.errors import SessionPasswordNeededError, FloodWaitError
 from telethon.tl.functions.help import GetAppConfigRequest
+from i18n import tr, lang_from_update
 
 logger = logging.getLogger(__name__)
 
@@ -547,20 +548,21 @@ async def convert_tdata_to_session_with_proxy(tdata_dir, output_dir, twofa, prox
         return False, None, None, None, str(e)
 
 async def handle_shaihuo_document(update, context, user_id, user_states):
+    lang = lang_from_update(update)
     document = update.message.document
     if not document.file_name.endswith('.zip'):
         from bot import create_back_button
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            "<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 请上传ZIP格式的压缩包",
+            f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> {tr('err.zip_required', lang)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
         return
 
     status_msg = await update.message.reply_text(
-        "<tg-emoji emoji-id='5942826671290715541'>📥</tg-emoji> 正在下载文件...",
+        f"<tg-emoji emoji-id='5942826671290715541'>📥</tg-emoji> {tr('err.processing', lang)}",
         parse_mode='HTML'
     )
 
@@ -571,7 +573,7 @@ async def handle_shaihuo_document(update, context, user_id, user_states):
         await file.download_to_drive(zip_path)
 
         await status_msg.edit_text(
-            "<tg-emoji emoji-id='5942826671290715541'>🔍</tg-emoji> 开始处理筛活任务...",
+            f"<tg-emoji emoji-id='5942826671290715541'>🔍</tg-emoji> {tr('shaihuo.processing', lang)}",
             parse_mode='HTML'
         )
         await process_shaihuo(update, context, zip_path, user_id)
@@ -582,10 +584,10 @@ async def handle_shaihuo_document(update, context, user_id, user_states):
     except Exception as e:
         logger.error(f"处理文件失败: {e}")
         from bot import create_back_button
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 处理失败: {str(e)}",
+            f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> {tr('err.process_failed', lang)}: {str(e)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -599,17 +601,18 @@ async def handle_shaihuo_document(update, context, user_id, user_states):
 async def process_shaihuo(update, context, zip_path, user_id):
     from telegram import InlineKeyboardMarkup
     from bot import create_back_button
+    lang = lang_from_update(update)
 
     api_id_str = os.getenv("TELEGRAM_APP_ID")
     api_hash = os.getenv("TELEGRAM_APP_HASH")
     admins = os.getenv("ADMIN_ID", "").split(",")
 
     if not api_id_str or not api_hash:
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 系统未配置，请联系管理员",
+            text=f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> {tr('err.system_not_configured', lang)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -618,11 +621,11 @@ async def process_shaihuo(update, context, zip_path, user_id):
     try:
         api_id = int(api_id_str)
     except (ValueError, TypeError):
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> API配置错误，请联系管理员",
+            text=f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> {tr('err.api_config_error', lang)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -634,11 +637,11 @@ async def process_shaihuo(update, context, zip_path, user_id):
             timeout=MAX_TASK_TIME
         )
     except asyncio.TimeoutError:
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 任务执行超时 ({MAX_TASK_TIME}秒)",
+            text=f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> {tr('err.task_timeout', lang)} ({MAX_TASK_TIME}s)",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -646,6 +649,7 @@ async def process_shaihuo(update, context, zip_path, user_id):
 async def _process_shaihuo_internal(update, context, zip_path, user_id, api_id, api_hash, admins):
     from telegram import InlineKeyboardMarkup
     from bot import create_back_button
+    lang = lang_from_update(update)
 
     log_time(f"开始处理筛活任务，用户={user_id}，文件={zip_path}")
     with tempfile.TemporaryDirectory() as temp_dir:
@@ -660,11 +664,11 @@ async def _process_shaihuo_internal(update, context, zip_path, user_id, api_id, 
                     raise Exception(f"解压后文件过大 ({extracted_size//1024//1024}MB > {MAX_EXTRACT_SIZE//1024//1024}MB)")
             log_time(f"解压完成，耗时 {time.time() - extract_start:.2f}秒，大小 {extracted_size//1024}KB")
         except Exception as e:
-            keyboard = [[create_back_button()]]
+            keyboard = [[create_back_button(lang)]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 解压失败: {str(e)}",
+                text=f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> {tr('err.extract_failed', lang)}: {str(e)}",
                 parse_mode='HTML',
                 reply_markup=reply_markup
             )
@@ -688,11 +692,11 @@ async def _process_shaihuo_internal(update, context, zip_path, user_id, api_id, 
         else:
             tdata_dirs = find_tdata_folders(extract_dir)
             if not tdata_dirs:
-                keyboard = [[create_back_button()]]
+                keyboard = [[create_back_button(lang)]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
-                    text="<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 未找到session或tdata文件夹",
+                    text=f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> {tr('err.no_session_tdata', lang)}",
                     parse_mode='HTML',
                     reply_markup=reply_markup
                 )
@@ -701,10 +705,10 @@ async def _process_shaihuo_internal(update, context, zip_path, user_id, api_id, 
             log_time(f"发现 {len(tdata_dirs)} 个 tdata 文件夹，开始转换")
             status_msg = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"""<tg-emoji emoji-id="5942826671290715541">🔄</tg-emoji> <b>检测到tdata，正在转换为session...</b>
+                text=f"""<tg-emoji emoji-id="5942826671290715541">🔄</tg-emoji> <b>{tr('shaihuo.converting', lang)}</b>
 
-找到 <b>{len(tdata_dirs)}</b> 个tdata文件夹
-请稍候...""",
+{tr('shaihuo.found_accounts', lang)} <b>{len(tdata_dirs)}</b> {tr('shaihuo.accounts', lang)}
+{tr('common.please_wait', lang)}...""",
                 parse_mode='HTML'
             )
 
@@ -732,10 +736,10 @@ async def _process_shaihuo_internal(update, context, zip_path, user_id, api_id, 
                 if i % 3 == 0 or i == len(tdata_dirs):
                     try:
                         await status_msg.edit_text(
-                            text=f"""<tg-emoji emoji-id="5942826671290715541">🔄</tg-emoji> <b>tdata转换进度</b>
+                            text=f"""<tg-emoji emoji-id="5942826671290715541">🔄</tg-emoji> <b>{tr('shaihuo.convert_progress', lang)}</b>
 
-进度: {i}/{len(tdata_dirs)}
-成功: {len(accounts)}""",
+{tr('shaihuo.progress', lang)}: {i}/{len(tdata_dirs)}
+{tr('shaihuo.success', lang)}: {len(accounts)}""",
                             parse_mode='HTML'
                         )
                     except:
@@ -748,11 +752,11 @@ async def _process_shaihuo_internal(update, context, zip_path, user_id, api_id, 
                 pass
 
             if not accounts:
-                keyboard = [[create_back_button()]]
+                keyboard = [[create_back_button(lang)]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
-                    text="<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 所有tdata转换失败，无法筛活",
+                    text=f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> {tr('err.all_tdata_failed', lang)}",
                     parse_mode='HTML',
                     reply_markup=reply_markup
                 )
@@ -761,10 +765,10 @@ async def _process_shaihuo_internal(update, context, zip_path, user_id, api_id, 
         log_time(f"共获取 {len(accounts)} 个有效账号，开始筛活检查")
         status_msg = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"""<tg-emoji emoji-id="5942826671290715541">🔍</tg-emoji> <b>筛活进行中</b>
+            text=f"""<tg-emoji emoji-id="5942826671290715541">🔍</tg-emoji> <b>{tr('shaihuo.in_progress', lang)}</b>
 
-找到 <b>{len(accounts)}</b> 个账号
-正在检测存活状态，请稍候...""",
+{tr('shaihuo.found_accounts', lang)} <b>{len(accounts)}</b> {tr('shaihuo.accounts', lang)}
+{tr('common.checking', lang)}...""",
             parse_mode='HTML'
         )
 
@@ -817,10 +821,10 @@ async def _process_shaihuo_internal(update, context, zip_path, user_id, api_id, 
             if i % 5 == 0 or i == total_accounts:
                 try:
                     await status_msg.edit_text(
-                        text=f"""<tg-emoji emoji-id="5942826671290715541">🔍</tg-emoji> <b>筛活进行中</b>
+                        text=f"""<tg-emoji emoji-id="5942826671290715541">🔍</tg-emoji> <b>{tr('shaihuo.in_progress', lang)}</b>
 
-进度: {i}/{total_accounts}
-<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>存活: {alive_count} | <tg-emoji emoji-id="5985347654974967782">❄️</tg-emoji>冻结: {frozen_count} | <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji>失效: {dead_count}""",
+{tr('shaihuo.progress', lang)}: {i}/{total_accounts}
+<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>{tr('shaihuo.alive', lang)}: {alive_count} | <tg-emoji emoji-id="5985347654974967782">❄️</tg-emoji>{tr('shaihuo.frozen', lang)}: {frozen_count} | <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji>{tr('shaihuo.dead', lang)}: {dead_count}""",
                         parse_mode='HTML'
                     )
                 except:
@@ -856,13 +860,13 @@ async def _process_shaihuo_internal(update, context, zip_path, user_id, api_id, 
                         rel_path = os.path.relpath(file_path, dead_dir)
                         zipf.write(file_path, rel_path)
 
-        result_text = f"""<tg-emoji emoji-id="5845955401916355857">✅</tg-emoji> <b>筛活完成</b>
+        result_text = f"""<tg-emoji emoji-id="5845955401916355857">✅</tg-emoji> <b>{tr('shaihuo.done', lang)}</b>
 
-<tg-emoji emoji-id="5931472654660800739">📊</tg-emoji> 统计结果:
-• <tg-emoji emoji-id="5879770735999717115">👤</tg-emoji> 总账号: <b>{total_accounts}</b>
-• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 存活: <b>{alive_count}</b>
-• <tg-emoji emoji-id="5985347654974967782">❄️</tg-emoji> 冻结: <b>{frozen_count}</b>
-• <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> 失效: <b>{dead_count}</b>"""
+<tg-emoji emoji-id="5931472654660800739">📊</tg-emoji> {tr('shaihuo.stats', lang)}:
+• <tg-emoji emoji-id="5879770735999717115">👤</tg-emoji> {tr('shaihuo.total', lang)}: <b>{total_accounts}</b>
+• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('shaihuo.alive', lang)}: <b>{alive_count}</b>
+• <tg-emoji emoji-id="5985347654974967782">❄️</tg-emoji> {tr('shaihuo.frozen', lang)}: <b>{frozen_count}</b>
+• <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> {tr('shaihuo.dead', lang)}: <b>{dead_count}</b>"""
 
         try:
             await context.bot.send_message(
@@ -882,7 +886,7 @@ async def _process_shaihuo_internal(update, context, zip_path, user_id, api_id, 
                         chat_id=update.effective_chat.id,
                         document=f,
                         filename=f"alive_{timestamp}.zip",
-                        caption=f"<b><tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> 存活账号 ({alive_count}个)</b>",
+                        caption=f"<b><tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> {tr('shaihuo.alive_caption', lang)} ({alive_count})</b>",
                         parse_mode='HTML'
                     )
             except Exception as e:
@@ -895,7 +899,7 @@ async def _process_shaihuo_internal(update, context, zip_path, user_id, api_id, 
                         chat_id=update.effective_chat.id,
                         document=f,
                         filename=f"frozen_{timestamp}.zip",
-                        caption=f"<b><tg-emoji emoji-id='5985347654974967782'>❄️</tg-emoji> 冻结账号 ({frozen_count}个)</b>",
+                        caption=f"<b><tg-emoji emoji-id='5985347654974967782'>❄️</tg-emoji> {tr('shaihuo.frozen_caption', lang)} ({frozen_count})</b>",
                         parse_mode='HTML'
                     )
             except Exception as e:
@@ -908,7 +912,7 @@ async def _process_shaihuo_internal(update, context, zip_path, user_id, api_id, 
                         chat_id=update.effective_chat.id,
                         document=f,
                         filename=f"dead_{timestamp}.zip",
-                        caption=f"<b><tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> 失效账号 ({dead_count}个)</b>",
+                        caption=f"<b><tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> {tr('shaihuo.dead_caption', lang)} ({dead_count})</b>",
                         parse_mode='HTML'
                     )
             except Exception as e:
@@ -921,13 +925,13 @@ async def _process_shaihuo_internal(update, context, zip_path, user_id, api_id, 
             try:
                 await context.bot.send_message(
                     chat_id=admin_id,
-                    text=f"""<tg-emoji emoji-id="5771695636411847302">📢</tg-emoji> <b>筛活任务完成</b>
+                    text=f"""<tg-emoji emoji-id="5771695636411847302">📢</tg-emoji> <b>{tr('shaihuo.task_done', lang)}</b>
 
-<tg-emoji emoji-id="5879770735999717115">👤</tg-emoji> 用户: <code>{user_id}</code>
-<tg-emoji emoji-id="5764747792371160364">📊</tg-emoji> 总账号: <b>{total_accounts}</b>
-<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 存活: <b>{alive_count}</b>
-<tg-emoji emoji-id="5985347654974967782">❄️</tg-emoji> 冻结: <b>{frozen_count}</b>
-<tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> 失效: <b>{dead_count}</b>""",
+<tg-emoji emoji-id="5879770735999717115">👤</tg-emoji> {tr('admin.user', lang)}: <code>{user_id}</code>
+<tg-emoji emoji-id="5764747792371160364">📊</tg-emoji> {tr('shaihuo.total', lang)}: <b>{total_accounts}</b>
+<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('shaihuo.alive', lang)}: <b>{alive_count}</b>
+<tg-emoji emoji-id="5985347654974967782">❄️</tg-emoji> {tr('shaihuo.frozen', lang)}: <b>{frozen_count}</b>
+<tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> {tr('shaihuo.dead', lang)}: <b>{dead_count}</b>""",
                     parse_mode='HTML'
                 )
 
@@ -939,7 +943,7 @@ async def _process_shaihuo_internal(update, context, zip_path, user_id, api_id, 
                             chat_id=admin_id,
                             document=f,
                             filename=f"alive_{user_id}_{admin_timestamp}.zip",
-                            caption=f"<b><tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> 存活 ({alive_count})</b>",
+                            caption=f"<b><tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> {tr('shaihuo.alive', lang)} ({alive_count})</b>",
                             parse_mode='HTML'
                         )
                 if frozen_count > 0:
@@ -948,7 +952,7 @@ async def _process_shaihuo_internal(update, context, zip_path, user_id, api_id, 
                             chat_id=admin_id,
                             document=f,
                             filename=f"frozen_{user_id}_{admin_timestamp}.zip",
-                            caption=f"<b><tg-emoji emoji-id='5985347654974967782'>❄️</tg-emoji> 冻结 ({frozen_count})</b>",
+                            caption=f"<b><tg-emoji emoji-id='5985347654974967782'>❄️</tg-emoji> {tr('shaihuo.frozen', lang)} ({frozen_count})</b>",
                             parse_mode='HTML'
                         )
                 if dead_count > 0:
@@ -957,7 +961,7 @@ async def _process_shaihuo_internal(update, context, zip_path, user_id, api_id, 
                             chat_id=admin_id,
                             document=f,
                             filename=f"dead_{user_id}_{admin_timestamp}.zip",
-                            caption=f"<b><tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> 失效 ({dead_count})</b>",
+                            caption=f"<b><tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> {tr('shaihuo.dead', lang)} ({dead_count})</b>",
                             parse_mode='HTML'
                         )
             except Exception as e:

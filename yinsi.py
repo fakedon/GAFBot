@@ -18,6 +18,7 @@ import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
+from i18n import tr, lang_from_update, get_env_i18n
 
 logger = logging.getLogger(__name__)
 from dotenv import load_dotenv
@@ -110,9 +111,9 @@ def create_proxy_dict(proxy):
 
 user_privacy_states = {}
 
-def create_back_button():
+def create_back_button(lang="zh"):
     return InlineKeyboardButton(
-        "返回主菜单", 
+        tr("back_to_main", lang),
         callback_data="back_to_main"
     ).to_dict() | {"icon_custom_emoji_id": BACK_BUTTON_EMOJI_ID}
 
@@ -127,16 +128,16 @@ def safe_extract(zip_ref, target_dir):
         zip_ref.extract(member, target_dir)
 
 privacy_settings = {
-    "phone": {"name": "手机号", "key": InputPrivacyKeyPhoneNumber, "icon_custom_emoji_id": "5877316724830768997"},
-    "last_seen": {"name": "最后在线时间", "key": InputPrivacyKeyStatusTimestamp, "icon_custom_emoji_id": "5843457994397849034"},
-    "forward": {"name": "转发内容", "key": InputPrivacyKeyChatInvite, "icon_custom_emoji_id": "5877468380125990242"},
-    "profile_photo": {"name": "个人头像", "key": InputPrivacyKeyProfilePhoto, "icon_custom_emoji_id": "5843506780931363129"}
+    "phone": {"name": "privacy.phone", "key": InputPrivacyKeyPhoneNumber, "icon_custom_emoji_id": "5877316724830768997"},
+    "last_seen": {"name": "privacy.last_seen", "key": InputPrivacyKeyStatusTimestamp, "icon_custom_emoji_id": "5843457994397849034"},
+    "forward": {"name": "privacy.forward", "key": InputPrivacyKeyChatInvite, "icon_custom_emoji_id": "5877468380125990242"},
+    "profile_photo": {"name": "privacy.profile_photo", "key": InputPrivacyKeyProfilePhoto, "icon_custom_emoji_id": "5843506780931363129"}
 }
 
 privacy_options = {
-    "everyone": {"name": "所有人", "value": InputPrivacyValueAllowAll, "icon_custom_emoji_id": "5942877472163892475"},
-    "contacts": {"name": "联系人", "value": InputPrivacyValueAllowContacts, "icon_custom_emoji_id": "5846008814129649022"},
-    "nobody": {"name": "没有人", "value": InputPrivacyValueDisallowAll, "icon_custom_emoji_id": "5922712343011135025"}
+    "everyone": {"name": "privacy.everyone", "value": InputPrivacyValueAllowAll, "icon_custom_emoji_id": "5942877472163892475"},
+    "contacts": {"name": "privacy.contacts", "value": InputPrivacyValueAllowContacts, "icon_custom_emoji_id": "5846008814129649022"},
+    "nobody": {"name": "privacy.nobody", "value": InputPrivacyValueDisallowAll, "icon_custom_emoji_id": "5922712343011135025"}
 }
 
 def repair_session(session_path):
@@ -184,93 +185,95 @@ async def show_privacy_config(update: Update, context: ContextTypes.DEFAULT_TYPE
     query = update.callback_query
     user_id = str(query.from_user.id)
     await query.answer()
-    
+    lang = lang_from_update(update)
+
     if user_id not in user_privacy_states:
         user_privacy_states[user_id] = {}
     settings_text = []
     for s_key, s_info in privacy_settings.items():
-        current = user_privacy_states[user_id].get(s_key, "未设置")
+        current = user_privacy_states[user_id].get(s_key, "unset")
         if current in privacy_options:
-            current_name = privacy_options[current]["name"]
+            current_name = tr(privacy_options[current]["name"], lang)
         else:
-            current_name = "未设置"
-        settings_text.append(f"• {s_info['name']}: {current_name}")
-    
+            current_name = tr("privacy.unset", lang)
+        settings_text.append(f"• {tr(s_info['name'], lang)}: {current_name}")
+
     keyboard = [
         [
-            create_button(f"设置{privacy_settings['phone']['name']}", "privacy_phone", privacy_settings['phone']["icon_custom_emoji_id"]),
-            create_button(f"设置{privacy_settings['last_seen']['name']}", "privacy_last_seen", privacy_settings['last_seen']["icon_custom_emoji_id"])
+            create_button(f"{tr('privacy.set_prefix', lang)}{tr(privacy_settings['phone']['name'], lang)}", "privacy_phone", privacy_settings['phone']["icon_custom_emoji_id"]),
+            create_button(f"{tr('privacy.set_prefix', lang)}{tr(privacy_settings['last_seen']['name'], lang)}", "privacy_last_seen", privacy_settings['last_seen']["icon_custom_emoji_id"])
         ],
         [
-            create_button(f"设置{privacy_settings['forward']['name']}", "privacy_forward", privacy_settings['forward']["icon_custom_emoji_id"]),
-            create_button(f"设置{privacy_settings['profile_photo']['name']}", "privacy_profile_photo", privacy_settings['profile_photo']["icon_custom_emoji_id"])
+            create_button(f"{tr('privacy.set_prefix', lang)}{tr(privacy_settings['forward']['name'], lang)}", "privacy_forward", privacy_settings['forward']["icon_custom_emoji_id"]),
+            create_button(f"{tr('privacy.set_prefix', lang)}{tr(privacy_settings['profile_photo']['name'], lang)}", "privacy_profile_photo", privacy_settings['profile_photo']["icon_custom_emoji_id"])
         ],
         [
-            create_button("确认并上传", "privacy_confirm_upload", CONFIRM_BUTTON_EMOJI_ID),
-            create_button("全部重置", "privacy_reset_all", RESET_BUTTON_EMOJI_ID)
+            create_button(tr("privacy.confirm_upload", lang), "privacy_confirm_upload", CONFIRM_BUTTON_EMOJI_ID),
+            create_button(tr("privacy.reset_all", lang), "privacy_reset_all", RESET_BUTTON_EMOJI_ID)
         ],
-        [create_back_button()]
+        [create_back_button(lang)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    await query.edit_message_text(
-        text=f"""<b><tg-emoji emoji-id="5879895758202735862">🔒</tg-emoji> 隐私配置</b>
 
-当前设置：
+    await query.edit_message_text(
+        text=f"""<b><tg-emoji emoji-id="5879895758202735862">🔒</tg-emoji> {tr('privacy.title', lang)}</b>
+
+{tr('privacy.current', lang)}：
 {chr(10).join(settings_text)}
 
-点击按钮分别设置各项，设置完成后点击"确认并上传"上传ZIP文件""",
+{get_env_i18n('PRIVACY_CONFIG_BACK', lang)}""",
         parse_mode=ParseMode.HTML,
         reply_markup=reply_markup
     )
 
 async def handle_privacy_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = lang_from_update(update)
     query = update.callback_query
     user_id = str(query.from_user.id)
     data = query.data
     await query.answer()
-    
+
     setting_map = {
         "privacy_phone": "phone",
         "privacy_last_seen": "last_seen",
         "privacy_forward": "forward",
         "privacy_profile_photo": "profile_photo"
     }
-    
+
     setting_key = setting_map.get(data)
     if not setting_key:
         logger.error(f"未知的回调数据: {data}")
         return
-    
+
     if user_id not in user_privacy_states:
         user_privacy_states[user_id] = {}
-    
+
     user_privacy_states[user_id]["current_setting"] = setting_key
-    
+
     keyboard = [
         [
-            create_button("所有人", "privacy_set_everyone", privacy_options["everyone"]["icon_custom_emoji_id"]),
-            create_button("联系人", "privacy_set_contacts", privacy_options["contacts"]["icon_custom_emoji_id"]),
-            create_button("没有人", "privacy_set_nobody", privacy_options["nobody"]["icon_custom_emoji_id"])
+            create_button(tr("privacy.everyone", lang), "privacy_set_everyone", privacy_options["everyone"]["icon_custom_emoji_id"]),
+            create_button(tr("privacy.contacts", lang), "privacy_set_contacts", privacy_options["contacts"]["icon_custom_emoji_id"]),
+            create_button(tr("privacy.nobody", lang), "privacy_set_nobody", privacy_options["nobody"]["icon_custom_emoji_id"])
         ],
-        [create_button("返回", "privacy_config", BACK_BUTTON_EMOJI_ID)],
-        [create_back_button()]
+        [create_button(tr("back", lang), "privacy_config", BACK_BUTTON_EMOJI_ID)],
+        [create_back_button(lang)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
-    setting_name = privacy_settings[setting_key]["name"]
-    current = user_privacy_states[user_id].get(setting_key, "未设置")
+
+    setting_name = tr(privacy_settings[setting_key]["name"], lang)
+    current = user_privacy_states[user_id].get(setting_key, "unset")
     if current in privacy_options:
-        current_name = privacy_options[current]["name"]
+        current_name = tr(privacy_options[current]["name"], lang)
     else:
-        current_name = "未设置"
-    
+        current_name = tr("privacy.unset", lang)
+
     await query.edit_message_text(
-        text=f"""<b>{setting_name} 可见范围</b>
+        text=f"""<b>{setting_name} {tr('privacy.visible_range', lang)}</b>
 
-当前设置：{current_name}
+{tr('privacy.current', lang)}：{current_name}
 
-请选择谁可以查看：""",
+{tr('privacy.select_who', lang)}：""",
         parse_mode=ParseMode.HTML,
         reply_markup=reply_markup
     )
@@ -300,43 +303,44 @@ async def handle_privacy_option(update: Update, context: ContextTypes.DEFAULT_TY
     await show_privacy_config(update, context)
 
 async def handle_privacy_confirm_upload(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = lang_from_update(update)
     query = update.callback_query
     user_id = str(query.from_user.id)
     await query.answer()
-    
+
     if user_id not in user_privacy_states:
         await show_privacy_config(update, context)
         return
-    
+
     has_settings = any(key in user_privacy_states[user_id] for key in ["phone", "last_seen", "forward", "profile_photo"])
     if not has_settings:
-        keyboard = [[create_button(" 返回设置", "privacy_config", BACK_BUTTON_EMOJI_ID)], [create_back_button()]]
+        keyboard = [[create_button(f" {tr('privacy.set_prefix', lang)}", "privacy_config", BACK_BUTTON_EMOJI_ID)], [create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
-            text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 请先设置至少一项隐私选项",
+            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('privacy.set_at_least_one', lang)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
         return
-    
+
     settings_text = []
     for s_key, s_info in privacy_settings.items():
         if s_key in user_privacy_states[user_id]:
             opt = user_privacy_states[user_id][s_key]
-            opt_name = privacy_options[opt]["name"]
-            settings_text.append(f"• {s_info['name']}: {opt_name}")
+            opt_name = tr(privacy_options[opt]["name"], lang)
+            settings_text.append(f"• {tr(s_info['name'], lang)}: {opt_name}")
         else:
-            settings_text.append(f"• {s_info['name']}: 保持不变")
-    
-    keyboard = [[create_back_button()]]
+            settings_text.append(f"• {tr(s_info['name'], lang)}: {tr('privacy.keep', lang)}")
+
+    keyboard = [[create_back_button(lang)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     await query.edit_message_text(
-        text=f"""<b>📋 将应用以下设置</b>
+        text=f"""<b>📋 {tr('privacy.will_apply', lang)}</b>
 
 {chr(10).join(settings_text)}
 
-<tg-emoji emoji-id="5877540355187937244">✏️</tg-emoji> 请上传包含session或tdata的ZIP文件""",
+<tg-emoji emoji-id="5877540355187937244">✏️</tg-emoji> {tr('privacy.upload_zip', lang)}""",
         parse_mode='HTML',
         reply_markup=reply_markup
     )
@@ -746,109 +750,111 @@ def get_total_size(path):
     return total
 
 async def process_privacy(update, context, zip_path, user_id, privacy_settings_data):
+    lang = lang_from_update(update)
     api_id_str = os.getenv("TELEGRAM_APP_ID")
     api_hash = os.getenv("TELEGRAM_APP_HASH")
     admins = os.getenv("ADMIN_ID", "").split(",")
-    
+
     if not api_id_str or not api_hash:
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 系统未配置，请联系管理员",
+            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.system_not_configured', lang)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
         return
-    
+
     try:
         api_id = int(api_id_str)
     except (ValueError, TypeError):
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> API配置错误，请联系管理员",
+            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.api_config_error', lang)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
         return
-    
+
     try:
         await asyncio.wait_for(
-            _process_privacy_internal(update, context, zip_path, user_id, api_id, api_hash, admins, privacy_settings_data), 
+            _process_privacy_internal(update, context, zip_path, user_id, api_id, api_hash, admins, privacy_settings_data),
             timeout=MAX_TASK_TIME
         )
     except asyncio.TimeoutError:
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 任务执行超时 ({MAX_TASK_TIME}秒)",
+            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.task_timeout', lang)} ({MAX_TASK_TIME}s)",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
 
 async def handle_privacy_document(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: str):
+    lang = lang_from_update(update)
     document = update.message.document
-    
+
     if not document.file_name.endswith('.zip'):
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         await update.message.reply_text(
-            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 请上传ZIP格式的压缩包",
+            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.zip_required', lang)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
         user_privacy_states.pop(user_id, None)
         return
-    
+
     privacy_settings_data = user_privacy_states.get(user_id, {})
     if not privacy_settings_data.get("waiting_zip"):
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         await update.message.reply_text(
-            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 请先设置隐私选项",
+            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('privacy.set_first', lang)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
         return
-    
+
     status_msg = await update.message.reply_text(
-        "<tg-emoji emoji-id='5443127283898405358'>📥</tg-emoji> 正在下载文件...",
+        f"<tg-emoji emoji-id='5443127283898405358'>📥</tg-emoji> {tr('err.processing', lang)}",
         parse_mode='HTML'
     )
-    
+
     try:
         file = await context.bot.get_file(document.file_id)
         zip_path = f"downloads/privacy_{user_id}_{int(time.time())}.zip"
         os.makedirs("downloads", exist_ok=True)
         await file.download_to_drive(zip_path)
-        
+
         await status_msg.edit_text(
-            "<tg-emoji emoji-id='5839200986022812209'>🔍</tg-emoji> 开始处理隐私配置任务...",
+            f"<tg-emoji emoji-id='5839200986022812209'>🔍</tg-emoji> {tr('privacy.processing', lang)}",
             parse_mode='HTML'
         )
-        
+
         await process_privacy(update, context, zip_path, user_id, privacy_settings_data)
-        
+
         try:
             os.remove(zip_path)
         except:
             pass
-        
+
     except Exception as e:
         logger.error(f"处理文件失败: {e}")
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        
+
         await update.message.reply_text(
-            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 处理失败: {str(e)}",
+            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.process_failed', lang)}: {str(e)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -860,24 +866,25 @@ async def handle_privacy_document(update: Update, context: ContextTypes.DEFAULT_
             pass
 
 async def _process_privacy_internal(update, context, zip_path, user_id, api_id, api_hash, admins, privacy_settings_data):
+    lang = lang_from_update(update)
     with tempfile.TemporaryDirectory() as temp_dir:
         extract_dir = os.path.join(temp_dir, "extracted")
         os.makedirs(extract_dir, exist_ok=True)
-        
+
         try:
             with zipfile.ZipFile(zip_path, 'r') as zip_ref:
                 safe_extract(zip_ref, extract_dir)
-                
+
                 extracted_size = get_total_size(extract_dir)
                 if extracted_size > MAX_EXTRACT_SIZE:
                     raise Exception(f"解压后文件过大 ({extracted_size//1024//1024}MB > {MAX_EXTRACT_SIZE//1024//1024}MB)")
         except Exception as e:
-            keyboard = [[create_back_button()]]
+            keyboard = [[create_back_button(lang)]]
             reply_markup = InlineKeyboardMarkup(keyboard)
-            
+
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 解压失败: {str(e)}",
+                text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.extract_failed', lang)}: {str(e)}",
                 parse_mode='HTML',
                 reply_markup=reply_markup
             )
@@ -900,83 +907,83 @@ async def _process_privacy_internal(update, context, zip_path, user_id, api_id, 
         else:
             tdata_dirs = find_tdata_folders(extract_dir)
             if not tdata_dirs:
-                keyboard = [[create_back_button()]]
+                keyboard = [[create_back_button(lang)]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
-                
+
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
-                    text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 未找到session或tdata文件夹",
+                    text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.no_session_tdata', lang)}",
                     parse_mode='HTML',
                     reply_markup=reply_markup
                 )
                 return
-            
+
             status_msg = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>检测到tdata，正在转换为session...</b>
+                text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('shaihuo.converting', lang)}</b>
 
-找到 <b>{len(tdata_dirs)}</b> 个tdata文件夹
-请稍候...""",
+{tr('shaihuo.found_accounts', lang)} <b>{len(tdata_dirs)}</b> {tr('common.tdata_folders', lang)}
+{tr('common.please_wait', lang)}""",
                 parse_mode='HTML'
             )
-            
+
             convert_temp_dir = os.path.join(temp_dir, "converted_sessions")
             os.makedirs(convert_temp_dir, exist_ok=True)
-            
+
             for i, tdata_dir in enumerate(tdata_dirs, 1):
                 parent_dir = os.path.dirname(tdata_dir)
                 twofa = read_2fa_from_folder(parent_dir)
                 proxy = get_random_proxy()
                 proxy_dict = create_proxy_dict(proxy) if proxy else None
-                
+
                 account_out = os.path.join(convert_temp_dir, f"acc_{i}")
                 os.makedirs(account_out, exist_ok=True)
-                
+
                 success, phone, sess_path, json_path, err = await convert_tdata_to_session_with_proxy(
                     tdata_dir, account_out, twofa, proxy_dict
                 )
-                
+
                 if success and sess_path and json_path:
                     accounts.append((phone, sess_path, json_path, tdata_dir))
                 else:
                     logger.error(f"转换失败 {tdata_dir}: {err}")
-                
+
                 if i % 3 == 0 or i == len(tdata_dirs):
                     try:
                         await status_msg.edit_text(
-                            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>tdata转换进度</b>
+                            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('shaihuo.convert_progress', lang)}</b>
 
-进度: {i}/{len(tdata_dirs)}
-成功: {len(accounts)}""",
+{tr('shaihuo.progress', lang)}: {i}/{len(tdata_dirs)}
+{tr('shaihuo.success', lang)}: {len(accounts)}""",
                             parse_mode='HTML'
                         )
                     except:
                         pass
                 await asyncio.sleep(0.2)
-            
+
             try:
                 await status_msg.delete()
             except:
                 pass
-            
+
             if not accounts:
-                keyboard = [[create_back_button()]]
+                keyboard = [[create_back_button(lang)]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
-                
+
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
-                    text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 所有tdata转换失败，无法继续",
+                    text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.all_tdata_failed', lang)}",
                     parse_mode='HTML',
                     reply_markup=reply_markup
                 )
                 return
-        
+
         status_msg = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>隐私配置进行中</b>
+            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('privacy.in_progress', lang)}</b>
 
-找到 <b>{len(accounts)}</b> 个账号
-<tg-emoji emoji-id="5775887550262546277">🔄</tg-emoji>正在处理，请稍候...""",
+{tr('shaihuo.found_accounts', lang)} <b>{len(accounts)}</b> {tr('shaihuo.accounts', lang)}
+<tg-emoji emoji-id="5775887550262546277">🔄</tg-emoji>{tr('common.processing_wait', lang)}""",
             parse_mode='HTML'
         )
         
@@ -993,10 +1000,10 @@ async def _process_privacy_internal(update, context, zip_path, user_id, api_id, 
             if i % 3 == 0 or i == len(accounts):
                 try:
                     await status_msg.edit_text(
-                        text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>隐私配置进行中</b>
+                        text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('privacy.in_progress', lang)}</b>
 
-进度: {i}/{len(accounts)}
-<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>成功: {success_count} | <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji>失败: {failed_count}""",
+{tr('shaihuo.progress', lang)}: {i}/{len(accounts)}
+<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>{tr('shaihuo.success', lang)}: {success_count} | <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji>{tr('2fa.failed', lang)}: {failed_count}""",
                         parse_mode='HTML'
                     )
                 except:
@@ -1057,59 +1064,59 @@ async def _process_privacy_internal(update, context, zip_path, user_id, api_id, 
             if s_key in privacy_settings_data:
                 opt = privacy_settings_data[s_key]
                 if opt in privacy_options:
-                    opt_name = privacy_options[opt]["name"]
-                    settings_text.append(f"• {s_info['name']}: {opt_name}")
-        
-        result_text = f"""<tg-emoji emoji-id="5909201569898827582">✅</tg-emoji> <b>隐私配置完成</b>
+                    opt_name = tr(privacy_options[opt]["name"], lang)
+                    settings_text.append(f"• {tr(s_info['name'], lang)}: {opt_name}")
 
-<b><tg-emoji emoji-id="5879895758202735862">🔒</tg-emoji>已应用设置:</b>
-{chr(10).join(settings_text) if settings_text else "• 无设置变更"}
+        result_text = f"""<tg-emoji emoji-id="5909201569898827582">✅</tg-emoji> <b>{tr('privacy.done', lang)}</b>
 
-<tg-emoji emoji-id="5931472654660800739">📊</tg-emoji> 统计结果:
-• <tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> 总账号: <b>{len(accounts)}</b>
-• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 成功: <b>{success_count}</b>
-• <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> 失败: <b>{failed_count}</b>"""
+<b><tg-emoji emoji-id="5879895758202735862">🔒</tg-emoji>{tr('privacy.applied', lang)}:</b>
+{chr(10).join(settings_text) if settings_text else f"• {tr('privacy.no_change', lang)}"}
+
+<tg-emoji emoji-id="5931472654660800739">📊</tg-emoji> {tr('shaihuo.stats', lang)}:
+• <tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> {tr('shaihuo.total', lang)}: <b>{len(accounts)}</b>
+• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('shaihuo.success', lang)}: <b>{success_count}</b>
+• <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> {tr('2fa.failed', lang)}: <b>{failed_count}</b>"""
 
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
             text=result_text,
             parse_mode='HTML'
         )
-        
+
         if success_count > 0:
             with open(success_zip, 'rb') as f:
                 await context.bot.send_document(
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=f"privacy_success_{timestamp}.zip",
-                    caption=f"<b><tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> 隐私配置成功 ({success_count}个)</b>",
+                    caption=f"<b><tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> {tr('privacy.success_caption', lang)} ({success_count}{tr('common.count', lang)})</b>",
                     parse_mode='HTML'
                 )
-        
+
         if failed_count > 0:
             with open(failed_zip, 'rb') as f:
                 await context.bot.send_document(
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=f"privacy_failed_{timestamp}.zip",
-                    caption=f"<b><tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> 配置失败 ({failed_count}个)</b>",
+                    caption=f"<b><tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> {tr('privacy.failed_caption', lang)} ({failed_count}{tr('common.count', lang)})</b>",
                     parse_mode='HTML'
                 )
-        
+
         for admin_id in admins:
             admin_id = admin_id.strip()
             if not admin_id:
                 continue
-            
+
             try:
                 await context.bot.send_message(
                     chat_id=admin_id,
-                    text=f"""<tg-emoji emoji-id="5931409969613116639">📢</tg-emoji> <b>隐私配置任务完成</b>
+                    text=f"""<tg-emoji emoji-id="5931409969613116639">📢</tg-emoji> <b>{tr('privacy.task_done', lang)}</b>
 
-<tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> 用户: <code>{user_id}</code>
-<tg-emoji emoji-id="5886412370347036129">📊</tg-emoji> 总账号: <b>{len(accounts)}</b>
-• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 成功: <b>{success_count}</b>
-• <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> 失败: <b>{failed_count}</b>""",
+<tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> {tr('admin.user', lang)}: <code>{user_id}</code>
+<tg-emoji emoji-id="5886412370347036129">📊</tg-emoji> {tr('shaihuo.total', lang)}: <b>{len(accounts)}</b>
+• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('shaihuo.success', lang)}: <b>{success_count}</b>
+• <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> {tr('2fa.failed', lang)}: <b>{failed_count}</b>""",
                     parse_mode='HTML'
                 )
                 

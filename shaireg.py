@@ -13,6 +13,7 @@ import aiohttp
 import aiohttp.client_exceptions
 
 logger = logging.getLogger(__name__)
+from i18n import tr, lang_from_update
 
 MAX_EXTRACT_SIZE = 200 * 1024 * 1024
 CONCURRENT_REQUESTS = 3
@@ -83,16 +84,17 @@ async def fetch_regtime(session, user_id, dc_id):
 
 async def handle_regtime_document(update, context, user_id, back_markup):
     document = update.message.document
+    lang = lang_from_update(update)
     if not document.file_name.endswith('.zip'):
         await update.message.reply_text(
-            "<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 请上传 ZIP 格式的压缩包",
+            "<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> " + tr("err.zip_required", lang),
             parse_mode='HTML',
             reply_markup=back_markup
         )
         return
 
     status_msg = await update.message.reply_text(
-        "<tg-emoji emoji-id='5942826671290715541'>📥</tg-emoji> 正在下载文件...",
+        "<tg-emoji emoji-id='5942826671290715541'>📥</tg-emoji> " + tr("err.processing", lang),
         parse_mode='HTML'
     )
 
@@ -103,7 +105,7 @@ async def handle_regtime_document(update, context, user_id, back_markup):
         await file.download_to_drive(zip_path)
 
         await status_msg.edit_text(
-            "<tg-emoji emoji-id='5942826671290715541'>🔍</tg-emoji> 开始处理注册时间任务...",
+            "<tg-emoji emoji-id='5942826671290715541'>🔍</tg-emoji> " + tr("regtime.processing", lang),
             parse_mode='HTML'
         )
 
@@ -121,7 +123,7 @@ async def handle_regtime_document(update, context, user_id, back_markup):
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=os.path.basename(result_zip),
-                    caption="""<b><tg-emoji emoji-id="5877332341331857066">📁</tg-emoji> 按注册时间分类的结果</b>""",
+                    caption="""<b><tg-emoji emoji-id="5877332341331857066">📁</tg-emoji> """ + tr("regtime.result_caption", lang) + "</b>",
                     parse_mode='HTML'
                 )
             os.remove(result_zip)
@@ -131,7 +133,7 @@ async def handle_regtime_document(update, context, user_id, back_markup):
     except Exception as e:
         logger.error(f"处理注册时间失败: {e}")
         await update.message.reply_text(
-            f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 处理失败: {str(e)}",
+            f"<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> {tr('err.process_failed', lang)}: {str(e)}",
             parse_mode='HTML',
             reply_markup=back_markup
         )
@@ -270,12 +272,13 @@ async def process_regtime(zip_path, update, context):
         result_zip = final_zip
 
         total = len(account_infos)
-        result_text = f"""<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> <b>注册时间筛选完成</b>
+        lang = lang_from_update(update)
+        result_text = f"""<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> <b>{tr('regtime.done', lang)}</b>
 
-<tg-emoji emoji-id="5879770735999717115">👤</tg-emoji> 总账号: <b>{total}</b>
-<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 成功: <b>{success_count}</b>
-<tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> 失败: <b>{fail_count}</b>
-<tg-emoji emoji-id="5879770735999717115">📁</tg-emoji> 日期分类: <b>{len(date_map)}</b> 个文件夹"""
+<tg-emoji emoji-id="5879770735999717115">👤</tg-emoji> {tr('shaihuo.total', lang)}: <b>{total}</b>
+<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('shaihuo.success', lang)}: <b>{success_count}</b>
+<tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> {tr('2fa.failed', lang)}: <b>{fail_count}</b>
+<tg-emoji emoji-id="5879770735999717115">📁</tg-emoji> {tr('regtime.date_cats', lang)}: <b>{len(date_map)}</b> """ + tr('shaihuo.accounts', lang)
 
         return result_text, result_zip
 

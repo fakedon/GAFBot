@@ -19,6 +19,7 @@ import logging
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
+from i18n import tr, lang_from_update, get_env_i18n
 from dotenv import load_dotenv
 from opentele.tl import TelegramClient
 from opentele.api import API
@@ -243,9 +244,9 @@ def create_proxy_dict(proxy):
         'rdns': True
     }
 
-def create_back_button():
+def create_back_button(lang="zh"):
     return InlineKeyboardButton(
-        "返回主菜单",
+        tr("back_to_main", lang),
         callback_data="back_to_main"
     ).to_dict() | {"icon_custom_emoji_id": BACK_BUTTON_EMOJI_ID}
 
@@ -375,31 +376,33 @@ async def convert_tdata_to_session_with_proxy(tdata_dir, output_dir, twofa, prox
         return False, None, None, None, str(e)
 
 async def show_clean_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = lang_from_update(update)
     query = update.callback_query
     user_id = str(query.from_user.id)
     await query.answer()
     keyboard = [
         [
-            InlineKeyboardButton("删除所有对话", callback_data="clean_chats").to_dict() | {"icon_custom_emoji_id": "5877307202888273539"},
-            InlineKeyboardButton("删除所有联系人", callback_data="clean_contacts").to_dict() | {"icon_custom_emoji_id": "5877318502947229960"}
+            InlineKeyboardButton(tr("clean.delete_chats", lang), callback_data="clean_chats").to_dict() | {"icon_custom_emoji_id": "5877307202888273539"},
+            InlineKeyboardButton(tr("clean.delete_contacts", lang), callback_data="clean_contacts").to_dict() | {"icon_custom_emoji_id": "5877318502947229960"}
         ],
         [
-            InlineKeyboardButton("删除所有Passkey", callback_data="clean_passkeys").to_dict() | {"icon_custom_emoji_id": "5886505193180239900"}
+            InlineKeyboardButton(tr("clean.delete_passkeys", lang), callback_data="clean_passkeys").to_dict() | {"icon_custom_emoji_id": "5886505193180239900"}
         ],
         [
-            InlineKeyboardButton("全部删除", callback_data="clean_all").to_dict() | {"icon_custom_emoji_id": "5922712343011135025"}
+            InlineKeyboardButton(tr("clean.delete_all", lang), callback_data="clean_all").to_dict() | {"icon_custom_emoji_id": "5922712343011135025"}
         ],
-        [create_back_button()]
+        [create_back_button(lang)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
     await query.edit_message_text(
-        text=CLEAN_ACCOUNT_BACK,
+        text=get_env_i18n("CLEAN_ACCOUNT_BACK", lang),
         parse_mode=ParseMode.HTML,
         reply_markup=reply_markup
     )
     user_clean_states[user_id] = {"waiting_selection": True}
 
 async def handle_clean_selection(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    lang = lang_from_update(update)
     query = update.callback_query
     user_id = str(query.from_user.id)
     data = query.data
@@ -414,38 +417,39 @@ async def handle_clean_selection(update: Update, context: ContextTypes.DEFAULT_T
         "type": clean_type,
         "waiting_zip": True
     }
-    keyboard = [[create_back_button()]]
+    keyboard = [[create_back_button(lang)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
     type_names = {
-        "chats": "删除所有对话",
-        "contacts": "删除所有联系人",
-        "passkeys": "删除所有Passkey",
-        "all": "删除所有对话、联系人和Passkey"
+        "chats": tr("clean.delete_chats", lang),
+        "contacts": tr("clean.delete_contacts", lang),
+        "passkeys": tr("clean.delete_passkeys", lang),
+        "all": tr("clean.delete_all_types", lang)
     }
     await query.edit_message_text(
-        text=f"""<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 已选择: {type_names[clean_type]}
+        text=f"""<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('clean.selected', lang)}: {type_names[clean_type]}
 
-<tg-emoji emoji-id="5877540355187937244">📤</tg-emoji> 请上传包含session或tdata的ZIP文件""",
+<tg-emoji emoji-id="5877540355187937244">📤</tg-emoji> {tr('clean.upload_zip', lang)}""",
         parse_mode=ParseMode.HTML,
         reply_markup=reply_markup
     )
 
 async def handle_clean_document(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: str):
+    lang = lang_from_update(update)
     document = update.message.document
     clean_info = user_clean_states.get(user_id, {})
     clean_type = clean_info.get("type")
     if not document.file_name.endswith('.zip'):
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 请上传ZIP格式的压缩包",
+            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.zip_required', lang)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
         user_clean_states.pop(user_id, None)
         return
     status_msg = await update.message.reply_text(
-        "<tg-emoji emoji-id='5443127283898405358'>📥</tg-emoji> 正在下载文件...",
+        f"<tg-emoji emoji-id='5443127283898405358'>📥</tg-emoji> {tr('err.processing', lang)}",
         parse_mode='HTML'
     )
     try:
@@ -454,7 +458,7 @@ async def handle_clean_document(update: Update, context: ContextTypes.DEFAULT_TY
         os.makedirs("downloads", exist_ok=True)
         await file.download_to_drive(zip_path)
         await status_msg.edit_text(
-            "<tg-emoji emoji-id='5839200986022812209'>🔍</tg-emoji> 开始处理清理任务...",
+            f"<tg-emoji emoji-id='5839200986022812209'>🔍</tg-emoji> {tr('clean.processing', lang)}",
             parse_mode='HTML'
         )
         await process_clean(update, context, zip_path, user_id, clean_type)
@@ -464,10 +468,10 @@ async def handle_clean_document(update: Update, context: ContextTypes.DEFAULT_TY
             pass
     except Exception as e:
         logger.error(f"处理文件失败: {e}")
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 处理失败: {str(e)}",
+            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.process_failed', lang)}: {str(e)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -631,15 +635,16 @@ async def generate_json_for_session(session_file, client, me, api_id, api_hash, 
         return None
 
 async def process_clean(update, context, zip_path, user_id, clean_type):
+    lang = lang_from_update(update)
     api_id_str = os.getenv("TELEGRAM_APP_ID")
     api_hash = os.getenv("TELEGRAM_APP_HASH")
     admins = os.getenv("ADMIN_ID", "").split(",")
     if not api_id_str or not api_hash:
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 系统未配置，请联系管理员",
+            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.system_not_configured', lang)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -647,11 +652,11 @@ async def process_clean(update, context, zip_path, user_id, clean_type):
     try:
         api_id = int(api_id_str)
     except (ValueError, TypeError):
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> API配置错误，请联系管理员",
+            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.api_config_error', lang)}",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -662,16 +667,17 @@ async def process_clean(update, context, zip_path, user_id, clean_type):
             timeout=MAX_TASK_TIME
         )
     except asyncio.TimeoutError:
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 任务执行超时 ({MAX_TASK_TIME}秒)",
+            text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.task_timeout', lang)} ({MAX_TASK_TIME}s)",
             parse_mode='HTML',
             reply_markup=reply_markup
         )
 
 async def _process_clean_internal(update, context, zip_path, user_id, api_id, api_hash, admins, clean_type):
+    lang = lang_from_update(update)
     with tempfile.TemporaryDirectory() as temp_dir:
         extract_dir = os.path.join(temp_dir, "extracted")
         os.makedirs(extract_dir, exist_ok=True)
@@ -682,11 +688,11 @@ async def _process_clean_internal(update, context, zip_path, user_id, api_id, ap
                 if extracted_size > MAX_EXTRACT_SIZE:
                     raise Exception(f"解压后文件过大 ({extracted_size//1024//1024}MB > {MAX_EXTRACT_SIZE//1024//1024}MB)")
         except Exception as e:
-            keyboard = [[create_back_button()]]
+            keyboard = [[create_back_button(lang)]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 解压失败: {str(e)}",
+                text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.extract_failed', lang)}: {str(e)}",
                 parse_mode='HTML',
                 reply_markup=reply_markup
             )
@@ -710,89 +716,89 @@ async def _process_clean_internal(update, context, zip_path, user_id, api_id, ap
         else:
             tdata_dirs = find_tdata_folders(extract_dir)
             if not tdata_dirs:
-                keyboard = [[create_back_button()]]
+                keyboard = [[create_back_button(lang)]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
-                    text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 未找到session或tdata文件夹",
+                    text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.no_session_tdata', lang)}",
                     parse_mode='HTML',
                     reply_markup=reply_markup
                 )
                 return
-            
+
             status_msg = await context.bot.send_message(
                 chat_id=update.effective_chat.id,
-                text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>检测到tdata，正在转换为session...</b>
+                text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('shaihuo.converting', lang)}</b>
 
-找到 <b>{len(tdata_dirs)}</b> 个tdata文件夹
-请稍候...""",
+{tr('shaihuo.found_accounts', lang)} <b>{len(tdata_dirs)}</b> {tr('common.tdata_folders', lang)}
+{tr('common.please_wait', lang)}""",
                 parse_mode='HTML'
             )
-            
+
             convert_temp_dir = os.path.join(temp_dir, "converted_sessions")
             os.makedirs(convert_temp_dir, exist_ok=True)
-            
+
             for i, tdata_dir in enumerate(tdata_dirs, 1):
                 parent_dir = os.path.dirname(tdata_dir)
                 twofa = read_2fa_from_folder(parent_dir)
                 proxy = get_random_proxy()
                 proxy_dict = create_proxy_dict(proxy) if proxy else None
-                
+
                 account_out = os.path.join(convert_temp_dir, f"acc_{i}")
                 os.makedirs(account_out, exist_ok=True)
-                
+
                 success, phone, sess_path, json_path, err = await convert_tdata_to_session_with_proxy(
                     tdata_dir, account_out, twofa, proxy_dict
                 )
-                
+
                 if success and sess_path and json_path:
                     accounts.append((phone, sess_path, json_path, tdata_dir))
                 else:
                     logger.error(f"转换失败 {tdata_dir}: {err}")
-                
+
                 if i % 3 == 0 or i == len(tdata_dirs):
                     try:
                         await status_msg.edit_text(
-                            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>tdata转换进度</b>
+                            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('shaihuo.convert_progress', lang)}</b>
 
-进度: {i}/{len(tdata_dirs)}
-成功: {len(accounts)}""",
+{tr('shaihuo.progress', lang)}: {i}/{len(tdata_dirs)}
+{tr('shaihuo.success', lang)}: {len(accounts)}""",
                             parse_mode='HTML'
                         )
                     except:
                         pass
                 await asyncio.sleep(0.2)
-            
+
             try:
                 await status_msg.delete()
             except:
                 pass
-            
+
             if not accounts:
-                keyboard = [[create_back_button()]]
+                keyboard = [[create_back_button(lang)]]
                 reply_markup = InlineKeyboardMarkup(keyboard)
                 await context.bot.send_message(
                     chat_id=update.effective_chat.id,
-                    text="<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 所有tdata转换失败，无法继续",
+                    text=f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.all_tdata_failed', lang)}",
                     parse_mode='HTML',
                     reply_markup=reply_markup
                 )
                 return
 
         type_names = {
-            "chats": "删除所有对话",
-            "contacts": "删除所有联系人",
-            "passkeys": "删除所有Passkey",
-            "all": "删除所有对话、联系人和Passkey"
+            "chats": tr("clean.delete_chats", lang),
+            "contacts": tr("clean.delete_contacts", lang),
+            "passkeys": tr("clean.delete_passkeys", lang),
+            "all": tr("clean.delete_all_types", lang)
         }
 
         status_msg = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>清理账号进行中</b>
+            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('clean.in_progress', lang)}</b>
 
-清理类型: {type_names[clean_type]}
-找到 <b>{len(accounts)}</b> 个账号
-<tg-emoji emoji-id="5775887550262546277">🔄</tg-emoji>正在处理，请稍候...""",
+{tr('clean.type', lang)}: {type_names[clean_type]}
+{tr('shaihuo.found_accounts', lang)} <b>{len(accounts)}</b> {tr('shaihuo.accounts', lang)}
+<tg-emoji emoji-id="5775887550262546277">🔄</tg-emoji>{tr('common.processing_wait', lang)}""",
             parse_mode='HTML'
         )
 
@@ -809,10 +815,10 @@ async def _process_clean_internal(update, context, zip_path, user_id, api_id, ap
             if i % 3 == 0 or i == len(accounts):
                 try:
                     await status_msg.edit_text(
-                        text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>清理账号进行中</b>
+                        text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('clean.in_progress', lang)}</b>
 
-进度: {i}/{len(accounts)}
-<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>成功: {success_count} | <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji>失败: {failed_count}""",
+{tr('shaihuo.progress', lang)}: {i}/{len(accounts)}
+<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>{tr('shaihuo.success', lang)}: {success_count} | <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji>{tr('2fa.failed', lang)}: {failed_count}""",
                         parse_mode='HTML'
                     )
                 except:
@@ -1021,15 +1027,15 @@ async def _process_clean_internal(update, context, zip_path, user_id, api_id, ap
         total_contacts = sum(r.get("contacts_deleted", 0) for r in results if r["status"] == "success")
         total_passkeys = sum(r.get("passkeys_deleted", 0) for r in results if r["status"] == "success")
 
-        result_text = f"""<tg-emoji emoji-id="5909201569898827582">✅</tg-emoji> <b>清理账号完成</b>
+        result_text = f"""<tg-emoji emoji-id="5909201569898827582">✅</tg-emoji> <b>{tr('clean.done', lang)}</b>
 
-<tg-emoji emoji-id="5931472654660800739">📊</tg-emoji> 统计结果:
-• <tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> 总账号: <b>{len(accounts)}</b>
-• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 成功: <b>{success_count}</b>
-• <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> 失败: <b>{failed_count}</b>
-• <tg-emoji emoji-id="5877307202888273539">💬</tg-emoji> 删除对话: <b>{total_chats}</b>
-• <tg-emoji emoji-id="5877318502947229960">👥</tg-emoji> 删除联系人: <b>{total_contacts}</b>
-• <tg-emoji emoji-id="5886505193180239900">🔑</tg-emoji> 删除Passkey: <b>{total_passkeys}</b>"""
+<tg-emoji emoji-id="5931472654660800739">📊</tg-emoji> {tr('shaihuo.stats', lang)}:
+• <tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> {tr('shaihuo.total', lang)}: <b>{len(accounts)}</b>
+• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('shaihuo.success', lang)}: <b>{success_count}</b>
+• <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> {tr('2fa.failed', lang)}: <b>{failed_count}</b>
+• <tg-emoji emoji-id="5877307202888273539">💬</tg-emoji> {tr('clean.deleted_chats', lang)}: <b>{total_chats}</b>
+• <tg-emoji emoji-id="5877318502947229960">👥</tg-emoji> {tr('clean.deleted_contacts', lang)}: <b>{total_contacts}</b>
+• <tg-emoji emoji-id="5886505193180239900">🔑</tg-emoji> {tr('clean.deleted_passkeys', lang)}: <b>{total_passkeys}</b>"""
 
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
@@ -1043,7 +1049,7 @@ async def _process_clean_internal(update, context, zip_path, user_id, api_id, ap
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=f"clean_success_{timestamp}.zip",
-                    caption=f"<b><tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> 清理成功 ({success_count}个)</b>",
+                    caption=f"<b><tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> {tr('clean.success_caption', lang)} ({success_count}{tr('common.count', lang)})</b>",
                     parse_mode='HTML'
                 )
 
@@ -1053,7 +1059,7 @@ async def _process_clean_internal(update, context, zip_path, user_id, api_id, ap
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=f"clean_failed_{timestamp}.zip",
-                    caption=f"<b><tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> 清理失败 ({failed_count}个)</b>",
+                    caption=f"<b><tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> {tr('clean.failed_caption', lang)} ({failed_count}{tr('common.count', lang)})</b>",
                     parse_mode='HTML'
                 )
 
@@ -1064,16 +1070,16 @@ async def _process_clean_internal(update, context, zip_path, user_id, api_id, ap
             try:
                 await context.bot.send_message(
                     chat_id=admin_id,
-                    text=f"""<tg-emoji emoji-id="5909201569898827582">📢</tg-emoji> <b>清理账号任务完成</b>
+                    text=f"""<tg-emoji emoji-id="5909201569898827582">📢</tg-emoji> <b>{tr('clean.task_done', lang)}</b>
 
-<tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> 用户: <code>{user_id}</code>
-清理类型: {type_names[clean_type]}
-<tg-emoji emoji-id="5931472654660800739">📊</tg-emoji> 总账号: <b>{len(accounts)}</b>
-• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 成功: <b>{success_count}</b>
-• <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> 失败: <b>{failed_count}</b>
-• <tg-emoji emoji-id="5877307202888273539">💬</tg-emoji> 删除对话: <b>{total_chats}</b>
-• <tg-emoji emoji-id="5877318502947229960">👥</tg-emoji> 删除联系人: <b>{total_contacts}</b>
-• <tg-emoji emoji-id="5886505193180239900">🔑</tg-emoji> 删除Passkey: <b>{total_passkeys}</b>""",
+<tg-emoji emoji-id="5886412370347036129">👤</tg-emoji> {tr('admin.user', lang)}: <code>{user_id}</code>
+{tr('clean.type', lang)}: {type_names[clean_type]}
+<tg-emoji emoji-id="5931472654660800739">📊</tg-emoji> {tr('shaihuo.total', lang)}: <b>{len(accounts)}</b>
+• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('shaihuo.success', lang)}: <b>{success_count}</b>
+• <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> {tr('2fa.failed', lang)}: <b>{failed_count}</b>
+• <tg-emoji emoji-id="5877307202888273539">💬</tg-emoji> {tr('clean.deleted_chats', lang)}: <b>{total_chats}</b>
+• <tg-emoji emoji-id="5877318502947229960">👥</tg-emoji> {tr('clean.deleted_contacts', lang)}: <b>{total_contacts}</b>
+• <tg-emoji emoji-id="5886505193180239900">🔑</tg-emoji> {tr('clean.deleted_passkeys', lang)}: <b>{total_passkeys}</b>""",
                     parse_mode='HTML'
                 )
                 admin_timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')

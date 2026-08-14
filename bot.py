@@ -52,6 +52,7 @@ from passkey import (
     user_passkey_states, PASSKEY_BACK
 )
 from shaireg import handle_regtime_document
+from i18n import tr, resolve_lang, lang_from_update, get_env_i18n
 load_dotenv()
 TOKEN = os.getenv("BOT_TOKEN")
 RAW_MESSAGE = os.getenv("START_MESSAGE")
@@ -91,20 +92,48 @@ def get_or_create_user(user):
             "id": user.id,
             "full_name": user.full_name,
             "username": user.username,
-            "status": default_status
+            "status": default_status,
+            "lang": resolve_lang(getattr(user, "language_code", None))
         }
         save_all_users(data)
     return data.get(user_id_str)
 
+def lang_for_user_id(user_id):
+    """根据用户 ID 查语言，返回 'zh'|'tw'|'en'。"""
+    try:
+        data = load_all_users()
+        return data.get(str(user_id), {}).get("lang") or "zh"
+    except Exception:
+        return "zh"
+
+async def show_lang_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    lang = lang_from_update(update)
+    def btn(text, data):
+        return InlineKeyboardButton(text, callback_data=data)
+    keyboard = [
+        [btn(tr("lang.zh", lang), "lang_zh")],
+        [btn(tr("lang.tw", lang), "lang_tw")],
+        [btn(tr("lang.en", lang), "lang_en")],
+        [create_back_button(lang)]
+    ]
+    reply_markup = InlineKeyboardMarkup(keyboard)
+    await query.edit_message_text(
+        text=tr("lang.choose", lang),
+        parse_mode=ParseMode.HTML,
+        reply_markup=reply_markup
+    )
+
 async def post_init(application):
     commands = [
-        BotCommand("start", "开启机器人"),
+        BotCommand("start", tr("cmd.start")),
+        BotCommand("lang", tr("menu.language").strip()),
     ]
     await application.bot.set_my_commands(commands)
 
-def create_back_button():
+def create_back_button(lang="zh"):
     back_button = InlineKeyboardButton(
-        "返回主菜单", 
+        tr("back_to_main", lang),
         callback_data="back_to_main"
     ).to_dict() | {"icon_custom_emoji_id": BACK_BUTTON_EMOJI_ID}
     return back_button
@@ -130,12 +159,12 @@ async def message_queue_processor(user_id: str):
                     try:
                         if update.callback_query:
                             await update.callback_query.message.reply_text(
-                                "<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 处理失败，请重试",
+                                "<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> " + tr("err.process_failed_retry", lang_from_update(update)),
                                 parse_mode=ParseMode.HTML
                             )
                         elif update.message:
                             await update.message.reply_text(
-                                "<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 处理失败，请重试",
+                                "<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> " + tr("err.process_failed_retry", lang_from_update(update)),
                                 parse_mode=ParseMode.HTML
                             )
                     except:
@@ -197,7 +226,7 @@ async def process_button_callback(update: Update, context: ContextTypes.DEFAULT_
 
     if user_data.get("status") != "vip" and data not in ["back_to_main"]:
         await query.edit_message_text(
-            text=UN_ACTIVE_MSG,
+            text=get_env_i18n("START_MESSAGE_UN", lang_from_update(update)),
             parse_mode=ParseMode.HTML
         )
         return
@@ -206,9 +235,23 @@ async def process_button_callback(update: Update, context: ContextTypes.DEFAULT_
         await start(update, context)
         return
 
+    if data in ("lang_zh", "lang_tw", "lang_en"):
+        new_lang = data.split("_")[1]
+        data_map = load_all_users()
+        if user_id in data_map:
+            data_map[user_id]["lang"] = new_lang
+            save_all_users(data_map)
+        await start(update, context)
+        return
+
+    if data == "show_lang":
+        await show_lang_menu(update, context)
+        return
+
     if data == "check_active":
-        formatted_text = SHAIHUO_BACK.replace('\\n', '\n') if isinstance(SHAIHUO_BACK, str) else SHAIHUO_BACK
-        keyboard = [[create_back_button()]]
+        lang = lang_from_update(update)
+        formatted_text = get_env_i18n("SHAIHUO_BACK", lang)
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await query.edit_message_text(
@@ -219,25 +262,27 @@ async def process_button_callback(update: Update, context: ContextTypes.DEFAULT_
         user_states[user_id] = "waiting_shaihuo"
 
     elif data == "account_login":
+        lang = lang_from_update(update)
         def btn(text, data, emoji_id):
             return InlineKeyboardButton(text, callback_data=data).to_dict() | {"icon_custom_emoji_id": emoji_id}
 
         keyboard = [
-            [btn("手机号登录", "phone_login", "5877316724830768997")],
-            [btn("扫码登录", "qr_login", "5877318502947229960")],
-            [create_back_button()]
+            [btn(tr("login.phone", lang), "phone_login", "5877316724830768997")],
+            [btn(tr("login.qr", lang), "qr_login", "5877318502947229960")],
+            [create_back_button(lang)]
         ]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await query.edit_message_text(
-            text="请选择登录方式：",
+            text=tr("login.select_method", lang),
             parse_mode=ParseMode.HTML,
             reply_markup=reply_markup
         )
 
     elif data == "phone_login":
-        formatted_text = ACCOUNT_LOGIN_BACK.replace('\\n', '\n') if isinstance(ACCOUNT_LOGIN_BACK, str) else "📱 账号登陆功能\n\n输入手机号，发送验证码，返回Session+Json协议包"
-        keyboard = [[create_back_button()]]
+        lang = lang_from_update(update)
+        formatted_text = get_env_i18n("ACCOUNT_LOGIN_BACK", lang)
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await query.edit_message_text(
@@ -249,8 +294,9 @@ async def process_button_callback(update: Update, context: ContextTypes.DEFAULT_
         user_states[user_id] = "waiting_phone"
 
     elif data == "check_regtime":
-        formatted_text = REGTIME_BACK
-        keyboard = [[create_back_button()]]
+        lang = lang_from_update(update)
+        formatted_text = get_env_i18n("REGTIME_BACK", lang)
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
             text=formatted_text,
@@ -264,7 +310,7 @@ async def process_button_callback(update: Update, context: ContextTypes.DEFAULT_
         await query.answer()
         await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text="<tg-emoji emoji-id='5877318502947229960'>📱</tg-emoji> 正在生成二维码，请稍候...",
+            text="<tg-emoji emoji-id='5877318502947229960'>📱</tg-emoji> " + tr("login.qr_generating", lang_from_update(update)),
             parse_mode=ParseMode.HTML
         )
         def on_cleanup():
@@ -344,8 +390,9 @@ async def process_button_callback(update: Update, context: ContextTypes.DEFAULT_
         await handle_recovery_skip(update, context)
 
     elif data == "destroy_session":
-        formatted_text = DESTROY_BACK.replace('\\n', '\n') if isinstance(DESTROY_BACK, str) else "🗑️ 销毁会话\n\n请上传包含 .session 和 .json 文件的 ZIP 压缩包。"
-        keyboard = [[create_back_button()]]
+        lang = lang_from_update(update)
+        formatted_text = get_env_i18n("DESTROY_BACK", lang)
+        keyboard = [[create_back_button(lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await query.edit_message_text(
             text=formatted_text,
@@ -373,7 +420,7 @@ async def process_handle_message(update: Update, context: ContextTypes.DEFAULT_T
             return
     if user_states.get(user_id) == "waiting_qr_login":
         await update.message.reply_text(
-            "<tg-emoji emoji-id='5877318502947229960'>📱</tg-emoji> 请扫描二维码完成登录，无需发送消息",
+            "<tg-emoji emoji-id='5877318502947229960'>📱</tg-emoji> " + tr("login.qr_scan_hint", lang_from_update(update)),
             parse_mode=ParseMode.HTML
         )
         return
@@ -392,10 +439,10 @@ async def process_handle_message(update: Update, context: ContextTypes.DEFAULT_T
     all_users = load_all_users()
     user_data = all_users.get(user_id, {})
     if user_data.get("status") != "vip":
-        await update.message.reply_text(UN_ACTIVE_MSG, parse_mode=ParseMode.HTML)
+        await update.message.reply_text(get_env_i18n("START_MESSAGE_UN", lang_from_update(update)), parse_mode=ParseMode.HTML)
         return
     if user_states.get(user_id) == "waiting_regtime_zip":
-        await handle_regtime_document(update, context, user_id, InlineKeyboardMarkup([[create_back_button()]]))
+        await handle_regtime_document(update, context, user_id, InlineKeyboardMarkup([[create_back_button(lang_from_update(update))]]))
         user_states.pop(user_id, None)
         return
     if user_id not in user_states:
@@ -406,10 +453,10 @@ async def process_handle_message(update: Update, context: ContextTypes.DEFAULT_T
     if state == "waiting_phone":
         phone = re.sub(r'\s+', '', text.strip())
         if not re.match(r'^\+?[0-9]{7,15}$', phone):
-            keyboard = [[create_back_button()]]
+            keyboard = [[create_back_button(lang_from_update(update))]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text(
-                "<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> 手机号格式错误",
+                "<tg-emoji emoji-id='5886496611835581345'>❌</tg-emoji> " + tr("login.phone_invalid", lang_from_update(update)),
                 parse_mode='HTML',
                 reply_markup=reply_markup
             )
@@ -450,7 +497,7 @@ async def process_handle_document(update: Update, context: ContextTypes.DEFAULT_
 
     if user_states.get(user_id) == "waiting_qr_login":
         await update.message.reply_text(
-            " 请先完成扫码登录，无需上传文件",
+            " " + tr("login.qr_scan_hint", lang_from_update(update)),
             parse_mode=ParseMode.HTML
         )
         return
@@ -495,11 +542,11 @@ async def process_handle_document(update: Update, context: ContextTypes.DEFAULT_
     all_users = load_all_users()
     user_data = all_users.get(user_id, {})
     if user_data.get("status") != "vip":
-        await update.message.reply_text(UN_ACTIVE_MSG, parse_mode=ParseMode.HTML)
+        await update.message.reply_text(get_env_i18n("START_MESSAGE_UN", lang_from_update(update)), parse_mode=ParseMode.HTML)
         return
 
     if state == "waiting_regtime_zip":
-        await handle_regtime_document(update, context, user_id, InlineKeyboardMarkup([[create_back_button()]]))
+        await handle_regtime_document(update, context, user_id, InlineKeyboardMarkup([[create_back_button(lang_from_update(update))]]))
         user_states.pop(user_id, None)
         return
 
@@ -516,10 +563,10 @@ async def process_handle_document(update: Update, context: ContextTypes.DEFAULT_
     elif state == "waiting_material_zip" or user_id in user_material_states:
         await handle_material_document(update, context, user_id)
     else:
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang_from_update(update))]]
         reply_markup = InlineKeyboardMarkup(keyboard)
         await update.message.reply_text(
-            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 请先选择功能再上传文件",
+            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.upload_after_select", lang_from_update(update)),
             parse_mode='HTML',
             reply_markup=reply_markup
         )
@@ -542,12 +589,12 @@ async def check_pay_status(context: ContextTypes.DEFAULT_TYPE):
         try:
             await context.bot.send_message(
                 chat_id=chat_id,
-                text=f"""<tg-emoji emoji-id="5900104897885376843">⏰</tg-emoji> <b>订单已过期</b>
+                text=f"""<tg-emoji emoji-id="5900104897885376843">⏰</tg-emoji> <b>{tr("pay.order_expired", lang_for_user_id(user_id))}</b>
 
-订单号：<code>{platform_order_id}</code>
-有效时间：5分钟
+{tr("pay.order_no", lang_for_user_id(user_id))}：<code>{platform_order_id}</code>
+{tr("pay.valid_time", lang_for_user_id(user_id))}
 
-如需继续购买，请重新发送 /start 选择支付。""",
+{tr("pay.resend_start", lang_for_user_id(user_id))}""",
                 parse_mode=ParseMode.HTML
             )
         except Exception as e:
@@ -571,12 +618,13 @@ async def check_pay_status(context: ContextTypes.DEFAULT_TYPE):
         remove_order(platform_order_id)
         
         try:
-            success_text = f"""<tg-emoji emoji-id="5825794181183836432">✔️</tg-emoji> <b>支付成功！</b>
+            l = lang_for_user_id(user_id)
+            success_text = f"""<tg-emoji emoji-id="5825794181183836432">✔️</tg-emoji> <b>{tr("pay.pay_success", l)}</b>
 
-<tg-emoji emoji-id="5765017520612315383">❤️</tg-emoji> 感谢您的支持，您已成为 VIP 用户
-<tg-emoji emoji-id="6005843436479975944">🔁</tg-emoji> 请重新发送 /start 使用功能
+<tg-emoji emoji-id="5765017520612315383">❤️</tg-emoji> {tr("pay.thanks", l)}
+<tg-emoji emoji-id="6005843436479975944">🔁</tg-emoji> {tr("pay.resend_start", l)}
 
-订单号：<code>{platform_order_id}</code>"""
+{tr("pay.order_no", l)}：<code>{platform_order_id}</code>"""
             await context.bot.send_message(chat_id=chat_id, text=success_text, parse_mode='HTML')
         except Exception as e:
             logger.error(f"发送成功消息失败: {e}")
@@ -603,7 +651,7 @@ async def send_payment_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE
     user = update.effective_user
     
     if not (OKPAY_ID and OKPAY_TOKEN):
-        await update.message.reply_text('<tg-emoji emoji-id="5987583383021034169">💰</tg-emoji> 支付系统配置错误，请联系管理员。', parse_mode="HTML")
+        await update.message.reply_text('<tg-emoji emoji-id="5987583383021034169">💰</tg-emoji> ' + tr("pay.config_error", lang_from_update(update)), parse_mode="HTML")
         return
     
     pay_client = OkayPay(OKPAY_ID, OKPAY_TOKEN)
@@ -620,19 +668,20 @@ async def send_payment_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         expire_time = datetime.fromtimestamp(time.time() + ORDER_TIMEOUT).strftime('%H:%M:%S')
         
-        keyboard = [[InlineKeyboardButton(f"立即支付 {OKPAY_COST} {OKPAY_PAYED}", url=pay_url)]]
+        keyboard = [[InlineKeyboardButton(f"{tr('pay.pay_now', lang_from_update(update))} {OKPAY_COST} {OKPAY_PAYED}", url=pay_url)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
+        l = lang_from_update(update)
         await update.message.reply_text(
-            f"""{UN_ACTIVE_MSG}
+            f"""{get_env_i18n('START_MESSAGE_UN', l)}
 
-<tg-emoji emoji-id="5994636050033545139">🪧</tg-emoji><b>订单详情：</b>
-<tg-emoji emoji-id="5967548335542767952">💳</tg-emoji>订单号：<code>{platform_order_id}</code>
-<tg-emoji emoji-id="5992430854909989581">🪙</tg-emoji>金额：{OKPAY_COST} {OKPAY_PAYED}
-<tg-emoji emoji-id="5900104897885376843">⏰</tg-emoji>过期时间：{expire_time} (5分钟有效)
+<tg-emoji emoji-id="5994636050033545139">🪧</tg-emoji><b>{tr('pay.order_detail', l)}：</b>
+<tg-emoji emoji-id="5967548335542767952">💳</tg-emoji>{tr('pay.order_no', l)}：<code>{platform_order_id}</code>
+<tg-emoji emoji-id="5992430854909989581">🪙</tg-emoji>{tr('pay.amount', l)}：{OKPAY_COST} {OKPAY_PAYED}
+<tg-emoji emoji-id="5900104897885376843">⏰</tg-emoji>{tr('pay.expire', l)}：{expire_time} (5分钟有效)
 
-<tg-emoji emoji-id="5900104897885376843">🕓</tg-emoji> 正在等待支付结果，请在完成支付后稍等片刻...
-<tg-emoji emoji-id="5994636050033545139">⚠️</tg-emoji> 订单5分钟后自动过期，过期后需重新生成""",
-            parse_mode=ParseMode.HTML, 
+<tg-emoji emoji-id="5900104897885376843">🕓</tg-emoji> {tr('pay.waiting_result', l)}
+<tg-emoji emoji-id="5994636050033545139">⚠️</tg-emoji> {tr('pay.auto_expire', l)}""",
+            parse_mode=ParseMode.HTML,
             reply_markup=reply_markup
         )
         context.job_queue.run_repeating(
@@ -649,7 +698,7 @@ async def send_payment_prompt(update: Update, context: ContextTypes.DEFAULT_TYPE
         )
     else:
         await update.message.reply_text(
-        "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 无法生成支付链接，请联系管理员或稍后再试。",
+        "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("pay.gen_fail", lang_from_update(update)),
         parse_mode=ParseMode.HTML
     )
 
@@ -659,34 +708,34 @@ async def set_vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if not context.args:
-        await update.message.reply_text("用法: /vip 用户ID")
+        await update.message.reply_text(tr("admin.usage_vip", lang_from_update(update)))
         return
 
     target_id = context.args[0]
     data = load_all_users()
-    
+
     if target_id in data:
         data[target_id]["status"] = "vip"
         save_all_users(data)
-        await update.message.reply_text(f'<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 用户 {target_id} 已升级为 VIP。', parse_mode="HTML")
+        await update.message.reply_text(f'<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr("admin.user", lang_from_update(update))} {target_id} {tr("admin.vip_set", lang_from_update(update))}。', parse_mode="HTML")
     else:
-        await update.message.reply_text('<tg-emoji emoji-id="5886496611835581345">❌</tg-emoji> 找不到该用户，请确认对方是否已通过 /start 注册。', parse_mode="HTML")
+        await update.message.reply_text(f'<tg-emoji emoji-id="5886496611835581345">❌</tg-emoji> {tr("admin.user_not_found", lang_from_update(update))}，{tr("join.required", lang_from_update(update))}', parse_mode="HTML")
 
 async def remove_vip(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_id = str(update.effective_user.id)
     if user_id != ADMIN_ID:
         return
     if not context.args:
-        await update.message.reply_text("用法: /unvip 用户ID")
+        await update.message.reply_text(tr("admin.usage_unvip", lang_from_update(update)))
         return
     target_id = context.args[0]
     data = load_all_users()
     if target_id in data:
         data[target_id]["status"] = "free"
         save_all_users(data)
-        text = f'<tg-emoji emoji-id="5886496611835581345">👤</tg-emoji> 用户 {target_id} 已降级为普通用户。'
+        text = f'<tg-emoji emoji-id="5886496611835581345">👤</tg-emoji> {tr("admin.user", lang_from_update(update))} {target_id} {tr("admin.downgraded", lang_from_update(update))}。'
     else:
-        text = '<tg-emoji emoji-id="5922712343011135025">🚫</tg-emoji> 找不到该用户。'
+        text = f'<tg-emoji emoji-id="5922712343011135025">🚫</tg-emoji> {tr("admin.user_not_found", lang_from_update(update))}。'
 
     await update.message.reply_text(text, parse_mode=ParseMode.HTML)
 
@@ -698,7 +747,7 @@ async def broadcast(update: Update, context: ContextTypes.DEFAULT_TYPE):
     broadcast_message = None
     data = load_all_users()
     broadcast_users = list(data.keys())
-    await update.message.reply_text(f"请输入要广播的消息内容，将发送给 {len(broadcast_users)} 个用户：")
+    await update.message.reply_text(tr("admin.broadcast_to_users", lang_from_update(update)).format(n=len(broadcast_users)))
     context.user_data["awaiting_broadcast"] = True
 
 async def handle_broadcast_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -708,7 +757,7 @@ async def handle_broadcast_message(update: Update, context: ContextTypes.DEFAULT
     global broadcast_message, broadcast_users
     broadcast_message = update.message
     context.user_data["awaiting_broadcast"] = False
-    await update.message.reply_text(f"开始广播，共 {len(broadcast_users)} 个用户，每秒20条...")
+    await update.message.reply_text(tr("admin.broadcast_per_second", lang_from_update(update)).format(n=len(broadcast_users)))
     asyncio.create_task(send_broadcast(context))
 
 async def send_broadcast(context: ContextTypes.DEFAULT_TYPE):
@@ -728,7 +777,7 @@ async def send_broadcast(context: ContextTypes.DEFAULT_TYPE):
             await asyncio.sleep(1)
     await context.bot.send_message(
         chat_id=ADMIN_ID,
-        text=f"广播完成：成功 {success}，失败 {fail}"
+        text=f"{tr('admin.broadcast_done', 'zh')}：{tr('admin.success', 'zh')} {success}，{tr('admin.fail', 'zh')} {fail}"
     )
     broadcast_message = None
     broadcast_users = []
@@ -762,15 +811,16 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         user = update.effective_user
     
     user_data = get_or_create_user(user)
+    lang = user_data.get("lang") or resolve_lang(getattr(user, "language_code", None))
     joined = await is_user_joined(context, user.id)
-    
+
     if JOIN_ID and not joined:
         clean_username = JOIN_ID.replace('@', '')
         invite_link = f"https://t.me/{clean_username}"
-        keyboard = [[InlineKeyboardButton("点击加入频道/群组", url=invite_link)]]
+        keyboard = [[InlineKeyboardButton(tr("join.click_join", lang), url=invite_link)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
-        join_msg = os.getenv("START_JOIN_MESSAGE", "请先加入频道后再使用。").replace('\\n', '\n')
-        
+        join_msg = get_env_i18n("START_JOIN_MESSAGE", lang) or tr("join.required", lang)
+
         if update.callback_query:
             await update.callback_query.edit_message_text(join_msg, reply_markup=reply_markup, parse_mode=ParseMode.HTML)
         else:
@@ -778,30 +828,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         return
 
     if user_data.get("status") == "vip":
-        text = START_MESSAGE_TEMPLATE.replace("{USER}", user.full_name)
+        text = get_env_i18n("START_MESSAGE", lang) or START_MESSAGE_TEMPLATE
+        text = text.replace("{USER}", user.full_name)
         text = re.sub(r'\* (.*)', r'* <code>\1</code>', text)
-        
+
         def btn(text, data, emoji_id):
             return InlineKeyboardButton(text, callback_data=data).to_dict() | {"icon_custom_emoji_id": emoji_id}
 
         keyboard = [
-            [btn("账号筛活", "check_active", "5942826671290715541"), 
-             btn("账号登陆", "account_login", "5920090136627908485")],
-            [btn("修改2FA", "change_2fa", "6005570495603282482"),
-             btn("整合号包", "merge_packs", "5877307202888273539")],
-            [btn("双向测试", "test_bidirectional", "5922612721244704425"), 
-             btn("踢其他设备", "kick_devices", "5877318502947229960")],
-            [btn("隐私配置", "privacy_config", "5931409969613116639"),
-             btn("格式互转", "format_convert", "6005843436479975944")],
-            [btn("转API", "convert_api", "5877597667231534929"),
-             btn("防止找回", "prevent_recovery", "5870734657384877785")],
-            [btn("号码筛BAN", "check_ban", "5922712343011135025"),
-             btn("筛料能力", "check_material", "5944940516754853337")],
-            [btn("清理账号", "clean_account", "6007942490076745785"),
-             btn("拆包工具", "unpack_tool", "5877540355187937244")],
-            [btn("销毁会话", "destroy_session", "5879937509579820068"),
-             btn("Passkey功能", "passkey_menu", "6008118472066732010")],
-            [btn("注册时间", "check_regtime", "5900104897885376843")],
+            [btn(tr("menu.check_active", lang), "check_active", "5942826671290715541"),
+             btn(tr("menu.account_login", lang), "account_login", "5920090136627908485")],
+            [btn(tr("menu.change_2fa", lang), "change_2fa", "6005570495603282482"),
+             btn(tr("menu.merge_packs", lang), "merge_packs", "5877307202888273539")],
+            [btn(tr("menu.test_bidirectional", lang), "test_bidirectional", "5922612721244704425"),
+             btn(tr("menu.kick_devices", lang), "kick_devices", "5877318502947229960")],
+            [btn(tr("menu.privacy_config", lang), "privacy_config", "5931409969613116639"),
+             btn(tr("menu.format_convert", lang), "format_convert", "6005843436479975944")],
+            [btn(tr("menu.convert_api", lang), "convert_api", "5877597667231534929"),
+             btn(tr("menu.prevent_recovery", lang), "prevent_recovery", "5870734657384877785")],
+            [btn(tr("menu.check_ban", lang), "check_ban", "5922712343011135025"),
+             btn(tr("menu.check_material", lang), "check_material", "5944940516754853337")],
+            [btn(tr("menu.clean_account", lang), "clean_account", "6007942490076745785"),
+             btn(tr("menu.unpack_tool", lang), "unpack_tool", "5877540355187937244")],
+            [btn(tr("menu.destroy_session", lang), "destroy_session", "5879937509579820068"),
+             btn(tr("menu.passkey", lang), "passkey_menu", "6008118472066732010")],
+            [btn(tr("menu.regtime", lang), "check_regtime", "5900104897885376843")],
+            [InlineKeyboardButton(tr("menu.language", lang), callback_data="show_lang")],
         ]
         
         for i in range(1, 4):
@@ -825,12 +877,32 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         else:
             await send_payment_prompt(update, context)
 
+async def lang_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """/lang 命令：直接进入语言切换菜单。"""
+    user = update.effective_user
+    get_or_create_user(user)
+    data = load_all_users()
+    lang = data.get(str(user.id), {}).get("lang") or resolve_lang(getattr(user, "language_code", None))
+    def btn(text, data_name):
+        return InlineKeyboardButton(text, callback_data=data_name)
+    keyboard = [
+        [btn(tr("lang.zh", lang), "lang_zh")],
+        [btn(tr("lang.tw", lang), "lang_tw")],
+        [btn(tr("lang.en", lang), "lang_en")],
+    ]
+    await update.message.reply_text(
+        text=tr("lang.choose", lang),
+        parse_mode=ParseMode.HTML,
+        reply_markup=InlineKeyboardMarkup(keyboard)
+    )
+
 if __name__ == '__main__':
     os.makedirs("downloads", exist_ok=True)
     os.makedirs("acd", exist_ok=True)
     cleanup_expired_orders()
     app = ApplicationBuilder().token(TOKEN).post_init(post_init).build()
     app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("lang", lang_command))
     app.add_handler(CallbackQueryHandler(button_callback))
     app.add_handler(CommandHandler("vip", set_vip))
     app.add_handler(CommandHandler("unvip", remove_vip))

